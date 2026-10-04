@@ -12,6 +12,8 @@ import glob
 import json
 import os
 import random
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 from pydantic import BaseModel, Field
 
@@ -357,13 +359,24 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
         ask = prompt.replace(f"{n} adet BİRBİRİNDEN", f"{k} adet BİRBİRİNDEN")
         if seen and round_ > 0:
             ask += "\nBunlar zaten üretildi, TEKRARLAMA:\n" + "\n".join(f"- {x}" for x in seen)
+        t0 = time.time()
         res: Fikirler = _ask(ask, Fikirler, client)
-        for d in res.tasarimlar:
+        log(f"  {len(res.tasarimlar)} fikir geldi ({time.time() - t0:.0f} sn). Kontrol ve onarım aynı anda yapılıyor...")
+
+        def check_and_fix(d):
             f = evaluate(d)
             if _must(f):
                 ne, nw = len(_errors(f)), len(_must(f)) - len(_errors(f))
                 log(f"'{d.ad}': {ne} hata, {nw} önemli uyarı; düzeltiliyor...")
-                d, f = repair(d, f, client, rounds=3, log=log)
+                tag = lambda m, _ad=d.ad: log(f"[{_ad}] {m.strip()}")
+                d, f = repair(d, f, client, rounds=3, log=tag)
+            log(f"'{d.ad}': {'✖ elendi' if _errors(f) else '✓ hazır'}")
+            return d, f
+
+        workers = max(1, min(int(os.environ.get("SABLON_PARALEL", "4")), len(res.tasarimlar)))
+        with ThreadPoolExecutor(workers) as ex:
+            done = list(ex.map(check_and_fix, res.tasarimlar))
+        for d, f in done:
             (rejected if _errors(f) else valid).append((d, f))
             seen.append(f"{d.ad}: {d.konsept[:120]}")
     if rejected:
