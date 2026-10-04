@@ -62,6 +62,7 @@ TAM_PAKET = "a4,letter,full,svg,dxf,3b,gorsel,etsy"
 
 
 def cmd_fikir(a):
+    from . import ai as ai_mod
     from .ai import AIError, ideas
     from .export.document import make_document
     from .export.pdf import write_contact_sheet
@@ -75,10 +76,32 @@ def cmd_fikir(a):
         except Exception:
             pass
     rejected: list = []
+    early: list = []  # hazır olur olmaz kaydedilenler (kredi/kota yarıda biterse kaybolmasın)
+    start = len(existing)
+
+    def save_now(d, findings):
+        i = start + len(early) + 1
+        stem = f"{i:02d}_{_slug(d.ad)}"
+        folder = os.path.join(a.klasor, stem) if a.tam else a.klasor
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, stem + ".json")
+        hist: list = []
+        P.log(hist, "ai:fikir", a.tarif, [])
+        P.save(path, d, hist)
+        early.append((d, findings, path, folder))
+        print(f"  ✓ kaydedildi: {path}")
+
+    if a.ekonomi:
+        ai_mod.ECONOMY = True
     try:
-        res = ideas(a.tarif, a.adet, previous=previous, malzeme=a.malzeme or "", rejected_out=rejected)
+        ideas(a.tarif, a.adet, previous=previous, malzeme=a.malzeme or "", rejected_out=rejected, on_valid=save_now)
     except AIError as e:
-        raise SystemExit(f"Hata: {e}")
+        print(f"Hata: {e}")
+        if not early:
+            u = ai_mod.usage_text()
+            if u:
+                print(u)
+            raise SystemExit(1)
     if rejected:
         rdir = os.path.join(a.klasor, "elenenler")
         os.makedirs(rdir, exist_ok=True)
@@ -91,16 +114,8 @@ def cmd_fikir(a):
                     if f.level == "hata":
                         fh.write(f"- {f.message}\n")
         print(f"\n{len(rejected)} fikir kontrollerden geçemedi; nedenleriyle birlikte: {rdir}")
-    start = len(existing)
     docs = []
-    for i, (d, findings) in enumerate(res, start + 1):
-        stem = f"{i:02d}_{_slug(d.ad)}"
-        folder = os.path.join(a.klasor, stem) if a.tam else a.klasor
-        os.makedirs(folder, exist_ok=True)
-        path = os.path.join(folder, stem + ".json")
-        hist: list = []
-        P.log(hist, "ai:fikir", a.tarif, [])
-        P.save(path, d, hist)
+    for i, (d, findings, path, folder) in enumerate(early, start + 1):
         print(f"\n[{i:02d}] {d.ad}  →  {path}\n  {d.konsept}")
         _report(findings, quiet_info=True)
         if not any(f.level == "hata" for f in findings):
@@ -117,7 +132,10 @@ def cmd_fikir(a):
                     print(f"  ✓ {len(made)} dosya → {folder}")
                 except (SystemExit, Exception) as ex:
                     print(f"  (paket üretilemedi: {ex})")
-    if not res:
+    u = ai_mod.usage_text()
+    if u:
+        print(f"\n{u}")
+    if not early:
         print("\nHiçbir fikir tüm kontrollerden hatasız geçemedi, bu yüzden uygulanabilir fikir yok.")
         if rejected:
             d, findings = rejected[0]
@@ -382,6 +400,7 @@ def main(argv: list[str] | None = None):
     s.add_argument("--ai", choices=["claude", "gemini"], help="Yapay zekâ sağlayıcısı (varsayılan: hangi anahtar varsa)")
     s.add_argument("--tam", action="store_true", help="Her uygun fikir için klasöründe tam satış paketi üret")
     s.add_argument("--hizli", action="store_true", help="Paket görsellerini hızlı (düşük kalite) üret")
+    s.add_argument("--ekonomi", action="store_true", help="Gemini'de pro yerine flash model (çok daha ucuz, biraz daha az isabetli)")
     s.set_defaults(f=cmd_fikir)
 
     s = sub.add_parser("ornekler", help="Hazır örnek tasarımlar"); s.set_defaults(f=cmd_ornekler)

@@ -23,6 +23,28 @@ from .engine import BuildError, build
 
 MODEL = os.environ.get("SABLON_MODEL", "claude-opus-5-5")
 GEMINI_MODEL = os.environ.get("SABLON_GEMINI_TEXT_MODEL", "")  # boşsa erişilebilir modellerden otomatik seçilir
+ECONOMY = os.environ.get("SABLON_EKONOMI", "") == "1"  # Gemini'de pro yerine flash (yaklaşık 5-10 kat ucuz)
+
+# Bu çalıştırmada harcanan token (fatura tahmini için)
+USAGE = {"cagri": 0, "girdi": 0, "cikti": 0, "dusunme": 0}
+
+
+def _add_usage(resp):
+    m = getattr(resp, "usage_metadata", None)
+    USAGE["cagri"] += 1
+    if m is None:
+        return
+    USAGE["girdi"] += getattr(m, "prompt_token_count", 0) or 0
+    USAGE["cikti"] += getattr(m, "candidates_token_count", 0) or 0
+    USAGE["dusunme"] += getattr(m, "thoughts_token_count", 0) or 0
+
+
+def usage_text() -> str:
+    u = USAGE
+    if not u["cagri"]:
+        return ""
+    return (f"Yapay zekâ kullanımı: {u['cagri']} çağrı, {u['girdi'] / 1000:.0f} bin girdi + "
+            f"{(u['cikti'] + u['dusunme']) / 1000:.0f} bin çıktı/düşünme token'ı. Kesin tutar: AI Studio → Billing.")
 
 
 def provider() -> str:
@@ -160,6 +182,11 @@ def _ask_claude(content, schema, client, max_tokens, effort, pdf):
             output_format=schema,
         ) as stream:
             msg = stream.get_final_message()
+        u = getattr(msg, "usage", None)
+        USAGE["cagri"] += 1
+        if u is not None:
+            USAGE["girdi"] += (getattr(u, "input_tokens", 0) or 0) + (getattr(u, "cache_read_input_tokens", 0) or 0)
+            USAGE["cikti"] += getattr(u, "output_tokens", 0) or 0
     except anthropic.AuthenticationError as e:
         raise AIError("Claude API anahtarı bulunamadı/geçersiz. ANTHROPIC_API_KEY ortam değişkenini ayarlayın "
                       "(veya Gemini kullanmak için SABLON_AI=gemini ve GEMINI_API_KEY).") from e
@@ -216,6 +243,8 @@ def _ask_gemini(content, schema, client, max_tokens, pdf):
     from . import gemini_models as GM
     try:
         model = GEMINI_MODEL or GM.pick_text(client)
+        if ECONOMY and not GEMINI_MODEL:
+            model = GM.pick_fallback(client, model) or model
     except Exception:
         model = "gemini-2.5-pro"
     last = None
@@ -255,6 +284,7 @@ def _ask_gemini(content, schema, client, max_tokens, pdf):
             continue  # şema reddedildi → şemasız dene
         except errors.APIError as e:
             raise AIError(f"Gemini API hatası: {e}") from e
+        _add_usage(resp)
         parsed = getattr(resp, "parsed", None)
         if isinstance(parsed, schema):
             return parsed
@@ -281,6 +311,9 @@ def _errors(findings) -> list:
     return [f for f in findings if f.level == "hata"]
 
 
+ROUNDS = int(os.environ.get("SABLON_ONARIM", "2"))  # fikir başına en çok onarım turu
+MAX_ERR = 6  # bundan çok hatalı fikri onarmaya çalışma (pahalı, nadiren düzelir)
+
 # Ürünü kullanılmaz kılan uyarılar: yapay zekâ bunları da hata gibi düzeltmeye çalışır.
 QUALITY = {"tek_baglanti", "cekme_az", "cekme_ucu", "erisim", "percin_kenar", "kilit_zor", "tutmuyor", "ince_panel"}
 
@@ -293,10 +326,15 @@ def _score(findings) -> tuple:
     return (len(_errors(findings)), len(_must(findings)), sum(f.level == "uyari" for f in findings))
 
 
-def repair(design: Tasarim, findings, client=None, rounds: int = 2, log=print) -> tuple[Tasarim, list]:
-    """Hataları (ve ürünü kullanılmaz kılan uyarıları) yapay zekâya düzelttirir; en iyi sürümü döndürür."""
+def repair(design: Tasarim, findings, client=None, rounds: int = 2, log=print, stop: list | None = None) -> tuple[Tasarim, list]:
+    """Hataları (ve ürünü kullanılmaz kılan uyarıları) yapay zekâya düzelttirir; en iyi sürümü döndürür.
+
+    stop verilirse: yapay zekâ hatasında (kredi/kota bitti) durur, nedeni stop'a ekler, eldeki en iyiyi döndürür.
+    """
     best = (design, findings)
     for _ in range(rounds):
+        if stop:
+            break
         must = _must(findings)
         if not must:
             break
@@ -309,7 +347,13 @@ def repair(design: Tasarim, findings, client=None, rounds: int = 2, log=print) -
             "# Giderilmesi zorunlu sorunlar\n" + "\n".join(f"- {f.message}" for f in must) +
             ("\n\n# Uyarılar\n" + "\n".join(f"- {f.message}" for f in other) if other else "")
         )
-        res: Onarim = _ask(prompt, Onarim, client, max_tokens=32000)
+        try:
+            res: Onarim = _ask(prompt, Onarim, client, max_tokens=32000)
+        except AIError as e:
+            if stop is None:
+                raise
+            stop.append(str(e))
+            break
         log(f"  onarım: {res.aciklama}")
         design = res.tasarim
         findings = evaluate(design)
@@ -326,7 +370,8 @@ def _moves(k: int, rng: random.Random) -> list[str]:
 
 
 def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None, seed: int | None = None,
-          malzeme: str = "", log=print, rejected_out: list | None = None) -> list[tuple[Tasarim, list]]:
+          malzeme: str = "", log=print, rejected_out: list | None = None,
+          on_valid=None) -> list[tuple[Tasarim, list]]:
     """Bir tariften birbirinden belirgin biçimde farklı n tasarım üretir, doğrular ve onarır."""
     rng = random.Random(seed)
     sparks = _moves(max(3, n + 1), rng)
@@ -346,7 +391,7 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
           "neyin farklı olduğunu anlatacak şekilde yaz."
     )
     extra = max(1, n // 3)
-    valid, rejected = [], []
+    valid, rejected, stop = [], [], []
     seen = list(previous or [])
     for round_ in range(3):
         need = n - len(valid)
@@ -360,16 +405,25 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
         if seen and round_ > 0:
             ask += "\nBunlar zaten üretildi, TEKRARLAMA:\n" + "\n".join(f"- {x}" for x in seen)
         t0 = time.time()
-        res: Fikirler = _ask(ask, Fikirler, client)
+        try:
+            res: Fikirler = _ask(ask, Fikirler, client)
+        except AIError as e:
+            if not (valid or rejected):
+                raise
+            stop.append(str(e))
+            break
         log(f"  {len(res.tasarimlar)} fikir geldi ({time.time() - t0:.0f} sn). Kontrol ve onarım aynı anda yapılıyor...")
 
         def check_and_fix(d):
             f = evaluate(d)
-            if _must(f):
+            if len(_errors(f)) > MAX_ERR:
+                log(f"'{d.ad}': {len(_errors(f))} hata; onarmak pahalı ve umutsuz, elendi (yerine yenisi istenecek).")
+                return d, f
+            if _must(f) and not stop:
                 ne, nw = len(_errors(f)), len(_must(f)) - len(_errors(f))
                 log(f"'{d.ad}': {ne} hata, {nw} önemli uyarı; düzeltiliyor...")
                 tag = lambda m, _ad=d.ad: log(f"[{_ad}] {m.strip()}")
-                d, f = repair(d, f, client, rounds=3, log=tag)
+                d, f = repair(d, f, client, rounds=ROUNDS, log=tag, stop=stop)
             log(f"'{d.ad}': {'✖ elendi' if _errors(f) else '✓ hazır'}")
             return d, f
 
@@ -379,6 +433,12 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
         for d, f in done:
             (rejected if _errors(f) else valid).append((d, f))
             seen.append(f"{d.ad}: {d.konsept[:120]}")
+            if not _errors(f) and on_valid is not None:
+                on_valid(d, f)
+        if stop:
+            break
+    if stop:
+        log(f"Yapay zekâ durdu: {stop[0]}\nO ana kadar hazır olan {len(valid)} fikir kaydedildi.")
     if rejected:
         log(f"{len(rejected)} fikir onarıldıktan sonra da üretilebilir değildi; elendi.")
     if rejected_out is not None:

@@ -661,7 +661,10 @@ def test_repair_fixes_quality_warnings():
 
 def test_fikir_full_package(tmp_path, monkeypatch):
     d = design("cekme_seritli_kartlik")
-    monkeypatch.setattr(ai, "ideas", lambda *a, **k: [(d, ai.evaluate(d))])
+    def fake(*a, on_valid=None, **k):
+        on_valid(d, ai.evaluate(d))
+        return [(d, ai.evaluate(d))]
+    monkeypatch.setattr(ai, "ideas", fake)
     main(["fikir", "şeritli kartlık", "-n", "1", "-d", str(tmp_path), "--tam", "--hizli"])
     sub = [p for p in tmp_path.iterdir() if p.is_dir()]
     assert len(sub) == 1
@@ -672,3 +675,24 @@ def test_fikir_full_package(tmp_path, monkeypatch):
     etsy = next(p for p in sub[0].iterdir() if p.name.endswith("_etsy.txt")).read_text(encoding="utf-8")
     assert "Stitchless" in etsy and "Pull-Tab" in etsy
     assert (tmp_path / "koleksiyon.pdf").exists()
+
+
+def test_ideas_keep_valid_when_credit_runs_out():
+    good = design("kapakli_citcitli_kartlik")
+    broken = copy.deepcopy(design("dikissiz_kilitli_kartlik"))
+    broken.ozellikler[0].hedefler = ["yok_boyle_panel"]
+
+    class Broke(FakeClient):
+        def __init__(self):
+            super().__init__(ai.Fikirler(tasarimlar=[good, broken]))
+            inner = self.beta.messages.stream
+
+            def stream(**kw):
+                if not self.answers:
+                    raise ai.AIError("kredi bitti")
+                return inner(**kw)
+            self.beta.messages.stream = stream
+
+    saved = []
+    res = ai.ideas("x", n=2, client=Broke(), seed=1, log=lambda *_: None, on_valid=lambda d, f: saved.append(d.ad))
+    assert [d.ad for d, _ in res] == [good.ad] and saved == [good.ad]

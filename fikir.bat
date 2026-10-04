@@ -12,7 +12,10 @@ if not defined GEMINI_API_KEY if not defined ANTHROPIC_API_KEY (
 set /p TARIF=Ne istiyorsunuz? (ornek: kapakli citcitli dikissiz kartlik, crazy horse) :
 set /p ADET=Kac fikir? (ornek: 4) :
 if "%ADET%"=="" set ADET=4
-sablon fikir "%TARIF%" -n %ADET% -d fikirler --tam
+set /p EKO=Ekonomi modu? Ucuz ve hizli, biraz daha az isabetli (E/H, varsayilan H) :
+set EKOARG=
+if /i "%EKO%"=="E" set EKOARG=--ekonomi
+sablon fikir "%TARIF%" -n %ADET% -d fikirler --tam %EKOARG%
 if errorlevel 1 (
   echo.
   echo Uygulanabilir fikir cikmadi veya bir hata oldu. Yukaridaki yaziyi okuyun.
