@@ -81,11 +81,13 @@ class PanelGeo:
     mount_z: float = 0.0
     hinge_x: tuple = (0.0, 0.0)          # menteşe örtüşme aralığı (çocuk x'inde)
     bend_k: float = BEND                 # kıvrım iç yarıçapı / kalınlık (malzeme kalibrasyonundan)
+    bend_override: float | None = None   # elle verilen kıvrım iç yarıçapı (mm)
     through: float = 0.0                 # yarıktan geçiş kayması (3B)
+    lift: float = 0.0                    # monte parçanın altındaki içerik nedeniyle kabarması (3B)
 
     @property
     def bend_r(self) -> float:
-        return self.bend_k * self.t
+        return self.bend_override if self.bend_override is not None else self.bend_k * self.t
 
     @property
     def edge_lines(self):
@@ -441,6 +443,7 @@ def build(design: Tasarim) -> Built:
         env["t"] = evaluate(design.kalinlik, env)
     except ExprError as e:
         raise BuildError([Finding("hata", "ifade", f"kalınlık: {e}")])
+    env["kr"] = calibration.bend_k(design.malzeme if design.malzeme in M.MATERIALS else "vaketa") * env["t"]
     for v in design.degiskenler:
         try:
             env[v.ad] = evaluate(v.deger, env)
@@ -509,6 +512,8 @@ def build(design: Tasarim) -> Built:
             ang = num(p.aci, f"{p.id}.aci", 0.0) if p.ebeveyn else 0.0
             pg = PanelGeo(p.id, part.id, p, w, h, ang, taper, t, corners)
             pg.bend_k = calibration.bend_k(mk)
+            if p.kivrim_yaricapi not in ("", None):
+                pg.bend_override = max(0.1, num(p.kivrim_yaricapi, f"{p.id}.kivrim_yaricapi", pg.bend_k * t))
             if p.ebeveyn:
                 pg.parent, pg.edge = p.ebeveyn, p.kenar
                 if p.kenar not in EDGES:

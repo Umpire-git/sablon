@@ -52,6 +52,8 @@ class Panel(BaseModel):
     yukseklik: str = Field(description="Menteşeden serbest uca bitmiş ölçü (mm), iç yüzde kat çizgisinden ölçülür")
     aci: str = Field(description="Bitmiş üründe katlama açısı; + vadi (iç yüzler birbirine döner), - dağ; 0 düz")
     kat_sirasi: int = Field(description="Montajda katlanma sırası (1,2,3...); kökte veya katlanmayanlarda 0")
+    kivrim_yaricapi: str = Field(description="Kıvrım iç yarıçapını elle ver (mm); boşsa deriye göre otomatik. Çekme "
+                                             "şeridinin kartları U şeklinde sarması için kullanılır")
     yariktan_gecer: bool = Field(description="Kilit kafası: ebeveyni (dil boynu) bir kilit_yarigi'ndan geçerken bu panel "
                                              "yarıktan içeri girip hedef panelin öbür yüzüne geçer")
     koseler: Koseler
@@ -123,6 +125,7 @@ class Tasarim(BaseModel):
 _DUZ = {"tip": "duz", "olcu": "0"}
 _DEFAULTS = {
     "Panel": {"ebeveyn": "", "kenar": "", "ofset": "0", "aci": "0", "kat_sirasi": 0, "daralma": "0", "yariktan_gecer": False,
+              "kivrim_yaricapi": "",
               "koseler": {"sol_alt": "0", "sag_alt": "0", "sag_ust": "0", "sol_ust": "0"},
               "profil_ust": _DUZ, "profil_sol": _DUZ, "profil_sag": _DUZ, "ad": ""},
     "Montaj": {"ana_panel": "", "x": "0", "y": "0", "yuz": "ic"},

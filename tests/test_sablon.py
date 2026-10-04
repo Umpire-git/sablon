@@ -558,3 +558,45 @@ def test_gemini_quota_falls_back_to_flash(monkeypatch):
     out = ai._ask("x", ai.Fikirler, fg)
     assert out.tasarimlar[0].ad == good.ad
     assert [c["model"] for c in fg.calls] == ["gemini-3.1-pro", "gemini-3.8-flash"]
+
+
+def test_cli_fikir_reports_and_saves_rejected(tmp_path, monkeypatch, capsys):
+    hopeless = copy.deepcopy(design("dikissiz_kilitli_kartlik"))
+    for pn in hopeless.parcalar[0].paneller:
+        if pn.id.startswith("kafa"):
+            pn.genislik = "boyun"
+
+    def fake_ideas(*a, rejected_out=None, **k):
+        rejected_out.append((hopeless, ai.evaluate(hopeless)))
+        return []
+
+    monkeypatch.setattr(ai, "ideas", fake_ideas)
+    with pytest.raises(SystemExit) as e:
+        main(["fikir", "çekme şeritli kartlık", "-n", "2", "-d", str(tmp_path / "f")])
+    assert e.value.code == 2
+    out = capsys.readouterr().out
+    assert "Hiçbir fikir" in out and "kilit" in out
+    files = os.listdir(tmp_path / "f" / "elenenler")
+    assert any(f.endswith("_neden.txt") for f in files) and any(f.endswith(".json") for f in files)
+
+
+# --- çekme şeridi ve monte parçalar ------------------------------------------------------------
+def test_pull_strip_wraps_under_cards_and_reports_lift():
+    b = build(design("cekme_seritli_kartlik"))
+    fs = run_checks(b)
+    assert not [f for f in fs if f.level == "hata"]
+    rep = [f for f in fs if f.code == "cekme"]
+    assert rep and "yükselir" in rep[0].message
+    # şeridin dönüş kolu arka panelin iç yüzüne yatıyor, kartlar şeridin üstünde
+    arka = b.panels["arka"]
+    q = b.to_local("arka", b.world("serit_arka", (10, 20)))
+    assert 0 < q[2] < 2.5
+    assert b.contents[0].z0 >= 0.9  # kartlar şerit ve kilit kafalarının üstünde
+
+
+def test_pull_strip_poking_out_of_body_is_caught():
+    d = load("cekme_seritli_kartlik")
+    for part in d["parcalar"]:
+        if part["id"] == "serit":
+            part["montaj"]["y"] = "1"  # U kıvrımı alt körükten taşar
+    assert "carpisma" in codes(d)

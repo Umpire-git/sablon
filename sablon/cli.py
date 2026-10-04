@@ -70,10 +70,23 @@ def cmd_fikir(a):
             previous.append(f"{d.ad}: {d.konsept[:160]}")
         except Exception:
             pass
+    rejected: list = []
     try:
-        res = ideas(a.tarif, a.adet, previous=previous, malzeme=a.malzeme or "")
+        res = ideas(a.tarif, a.adet, previous=previous, malzeme=a.malzeme or "", rejected_out=rejected)
     except AIError as e:
         raise SystemExit(f"Hata: {e}")
+    if rejected:
+        rdir = os.path.join(a.klasor, "elenenler")
+        os.makedirs(rdir, exist_ok=True)
+        for j, (d, findings) in enumerate(rejected, 1):
+            stem = os.path.join(rdir, f"{j:02d}_{_slug(d.ad)}")
+            P.save(stem + ".json", d, [])
+            with open(stem + "_neden.txt", "w", encoding="utf-8") as fh:
+                fh.write(f"{d.ad}\n{d.konsept}\n\nNeden elendi:\n")
+                for f in findings:
+                    if f.level == "hata":
+                        fh.write(f"- {f.message}\n")
+        print(f"\n{len(rejected)} fikir kontrollerden geçemedi; nedenleriyle birlikte: {rdir}")
     start = len(glob.glob(os.path.join(a.klasor, "*.json")))
     docs = []
     for i, (d, findings) in enumerate(res, start + 1):
@@ -88,6 +101,15 @@ def cmd_fikir(a):
                 docs.append((path, make_document(d, quick=True)))
             except Exception as ex:  # görsel üretimi fikri engellemesin
                 print(f"  (görsel üretilemedi: {ex})")
+    if not res:
+        print("\nHiçbir fikir tüm kontrollerden hatasız geçemedi, bu yüzden uygulanabilir fikir yok.")
+        if rejected:
+            d, findings = rejected[0]
+            print(f"En yakın fikir: '{d.ad}'. Kalan hatalar:")
+            for f in [f for f in findings if f.level == "hata"][:6]:
+                print(f"  ✖ {f.message}")
+            print("İsteği sadeleştirip tekrar deneyin veya bu çıktıyı geliştiriciye iletin.")
+        sys.exit(2)
     if docs:
         sheet = os.path.join(a.klasor, "koleksiyon.pdf")
         write_contact_sheet(docs, sheet, a.tarif)

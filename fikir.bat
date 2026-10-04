@@ -13,6 +13,13 @@ set /p TARIF=Ne istiyorsunuz? (ornek: kapakli citcitli dikissiz kartlik, crazy h
 set /p ADET=Kac fikir? (ornek: 4) :
 if "%ADET%"=="" set ADET=4
 sablon fikir "%TARIF%" -n %ADET% -d fikirler
+if errorlevel 1 (
+  echo.
+  echo Uygulanabilir fikir cikmadi veya bir hata oldu. Yukaridaki yaziyi okuyun.
+  if exist fikirler\elenenler start "" fikirler\elenenler
+  pause
+  exit /b 1
+)
 echo.
 echo Fikirler 'fikirler' klasorunde. Karsilastirma sayfasi aciliyor...
 if exist fikirler\koleksiyon.pdf start "" fikirler\koleksiyon.pdf

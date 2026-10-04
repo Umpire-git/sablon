@@ -299,7 +299,7 @@ def _moves(k: int, rng: random.Random) -> list[str]:
 
 
 def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None, seed: int | None = None,
-          malzeme: str = "", log=print) -> list[tuple[Tasarim, list]]:
+          malzeme: str = "", log=print, rejected_out: list | None = None) -> list[tuple[Tasarim, list]]:
     """Bir tariften birbirinden belirgin biçimde farklı n tasarım üretir, doğrular ve onarır."""
     rng = random.Random(seed)
     sparks = _moves(max(3, n + 1), rng)
@@ -342,6 +342,9 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
             seen.append(f"{d.ad}: {d.konsept[:120]}")
     if rejected:
         log(f"{len(rejected)} fikir onarıldıktan sonra da üretilebilir değildi; elendi.")
+    if rejected_out is not None:
+        rejected.sort(key=lambda df: len(_errors(df[1])))
+        rejected_out.extend(rejected)
     valid.sort(key=lambda df: sum(x.level == "uyari" for x in df[1]))
     return valid[:n]
 

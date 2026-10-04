@@ -71,3 +71,15 @@ içeriğin geçirildiği yarıklar. Malzeme yalnızca deridir: vaketa veya crazy
 4. Çıtçıt / kilit yarığının katlanınca boşluğa düşmesi; kilit kafasının yarıktan dar olması.
 5. Perçin/vida katlarının birbirine değmemesi.
 6. Açınımda panellerin çakışması.
+
+## Çekme şeridi (pull-up / pull-tab mekanizması)
+Şerit çekilince kartlar yukarı çıkar. Doğrulanmış kuruluş (örnek: cekme_seritli_kartlik.json):
+- Ayrı bir PARÇA (ince deri, `kalinlik` "1.0") olarak ön panelin İÇ yüzüne monte edilir (`montaj.ana_panel` = ön
+  panel, `yuz` "ic"), alt alta İKİ perçinle ön panele bağlanır (hedefler: ön panel).
+- Şeridin kök paneli ön panel boyunca aşağı iner; `alt` kenarına bağlı ikinci panel `aci` "180" ile kartların
+  ALTINDAN U çizip arka panelin iç yüzüne yatar ve arka panelin üstünden tutma ucu olarak çıkar
+  (yükseklik = arka panel + 15–20 mm, ucu `yuvarlak` profil).
+- U kıvrımının yarıçapını elle ver: `kivrim_yaricapi` = ru = (g + 2*kr − 2*ts)/2 (kr: hazır değişken, deriye göre
+  kıvrım yarıçapı; ts: şerit kalınlığı; g: alt körük). Montaj y'si ≥ ru + ts + 1.5 olmalı ki U gövdeden taşmasın.
+- Körük, kartlara ek olarak şeridin iki kolunu (ve içeri giren kilit kafalarını) taşımalı: g = S + t + 2*ts.
+- Motor çekince kartların kaç mm yükseleceğini ve tutma ucunun yeterliliğini raporlar (≥15 mm görünmeli).

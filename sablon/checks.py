@@ -73,15 +73,69 @@ def _inside_slab(pts_local: np.ndarray, p) -> np.ndarray:
     return res
 
 
+def _bend_world(b: Built, pid: str, fold) -> np.ndarray:
+    """Çocuk panelin menteşesindeki kıvrım bölgesinin dünya koordinatlı örnek noktaları."""
+    import math as _m
+    p = b.panels[pid]
+    f = fold.get(pid, 0.0) if isinstance(fold, dict) else fold
+    th = _m.radians(p.angle * f)
+    if abs(th) < 1e-3:
+        return np.zeros((0, 4))
+    H = b.hinge_frame(pid, fold)
+    zh = p.bend_r if p.angle >= 0 else -p.t - p.bend_r
+    xs = np.linspace(p.hinge_x[0] + 0.8, p.hinge_x[1] - 0.8, max(2, int((p.hinge_x[1] - p.hinge_x[0]) / 2.5)))
+    pts = []
+    for a in np.linspace(th * 0.15, th * 0.85, 5):
+        for z0 in (-p.t * 0.5,):
+            y = -(z0 - zh) * _m.sin(a)
+            z = zh + (z0 - zh) * _m.cos(a)
+            for x in xs:
+                pts.append((x, y, z, 1.0))
+    P = np.array(pts)
+    return (H @ P.T).T
+
+
+def _inside_bend(Pw: np.ndarray, b: Built, pid: str, fold) -> np.ndarray:
+    """Dünya noktalarından hangileri pid panelinin kıvrım hacminin içinde?"""
+    import math as _m
+    p = b.panels[pid]
+    f = fold.get(pid, 0.0) if isinstance(fold, dict) else fold
+    th = _m.radians(p.angle * f)
+    if abs(th) < 1e-3 or not len(Pw):
+        return np.zeros(len(Pw), bool)
+    H = np.linalg.inv(b.hinge_frame(pid, fold))
+    L = (H @ Pw.T).T
+    x, y, z = L[:, 0], L[:, 1], L[:, 2]
+    r = p.bend_r
+    if p.angle >= 0:
+        zh = r
+        a = np.arctan2(y, -(z - zh))
+    else:
+        zh = -p.t - r
+        a = -np.arctan2(y, (z - zh))
+    rho = np.hypot(y, z - zh)
+    ok = (x > p.hinge_x[0] + 0.3) & (x < p.hinge_x[1] - 0.3)
+    ok &= (rho > r + EPS) & (rho < r + p.t - EPS)
+    ok &= (np.sign(a) == np.sign(th)) & (np.abs(a) > 0.02) & (np.abs(a) < abs(th) - 0.02)
+    return ok
+
+
 def collisions(b: Built, fold=1.0, samples=None) -> list[tuple[str, str, int]]:
     mats = b.matrices(fold)
     inv = {pid: np.linalg.inv(m) for pid, m in mats.items()}
     samples = samples or {pid: _samples(b.panels[pid]) for pid in b.order}
     world = {}
     for pid, S in samples.items():
+        parts = []
         if len(S):
             H = np.c_[S, np.ones(len(S))]
-            world[pid] = (mats[pid] @ H.T).T
+            parts.append((mats[pid] @ H.T).T)
+        if b.panels[pid].parent:
+            bw = _bend_world(b, pid, fold)
+            if len(bw):
+                parts.append(bw)
+        if parts:
+            world[pid] = np.vstack(parts)
     out = []
     ids = list(b.order)
     for i, a in enumerate(ids):
@@ -96,6 +150,11 @@ def collisions(b: Built, fold=1.0, samples=None) -> list[tuple[str, str, int]]:
             if a in world:
                 loc = (inv[c] @ world[a].T).T[:, :3]
                 n += int(_inside_slab(loc, pc).sum())
+            # kıvrım hacimleri (aynı kıvrımı paylaşan komşular hariç)
+            if a in world and pc.parent and pc.parent != a and b.panels[a].parent != pc.parent:
+                n += int(_inside_bend(world[a], b, c, fold).sum())
+            if c in world and pa.parent and pa.parent != c and pc.parent != pa.parent:
+                n += int(_inside_bend(world[c], b, a, fold).sum())
             if n > 3:
                 out.append((a, c, n))
     return out
@@ -145,13 +204,17 @@ def run_checks(b: Built, steps: bool = True) -> list:
         levels = sorted({p.spec.kat_sirasi for p in b.panels.values() if p.parent and p.spec.kat_sirasi})
         passing = {(p.id, lk["target"]) for p in b.panels.values() if p.spec.yariktan_gecer
                    for lk in b.locks if lk["neck"] == p.parent}
+        # ince monte şeritler esnektir: katlanırken bükülüp yol verir (bitmiş hâl yine denetlenir)
+        flexible = {p.id for p in b.panels.values()
+                    if b.part_t[p.part] <= 1.2 and b.panels[b.roots[p.part]].mount is not None
+                    and b.panels[b.roots[p.part]].mount.ana_panel}
         reported = set()
         for k in levels:
             for frac in (0.25, 0.5, 0.75, 0.9, 0.95, 0.98):
                 fold = {pid: (1.0 if 0 < p.spec.kat_sirasi < k else frac if p.spec.kat_sirasi == k else 0.0)
                         for pid, p in b.panels.items()}
                 for a, c, n in collisions(b, fold, samples):
-                    if (a, c) in passing or (c, a) in passing or (a, c) in reported:
+                    if (a, c) in passing or (c, a) in passing or (a, c) in reported or a in flexible or c in flexible:
                         continue
                     reported.add((a, c))
                     out.append(Finding("hata", "montaj_carpisma",
@@ -294,6 +357,9 @@ def run_checks(b: Built, steps: bool = True) -> list:
             out.append(Finding("uyari", "erisim", f"{label}: içerik tamamen örtülü; tutup çekecek yer yok. "
                                                   "Ön paneli alçaltın veya başparmak oyuğu ekleyin.", p.id))
 
+    # --- çekme şeridi: çekince kartlar ne kadar yükselir, tutulabilir mi?
+    out += _pull_strips(b)
+
     # --- deri kullanımı ve ölçü
     for part_id, part in b.parts.items():
         a = b.area_cm2(part_id) * part.adet
@@ -332,4 +398,46 @@ def _covers(b: Built, cg) -> list[tuple[str, float]]:
             mid = (pts[:, 0] > cg.x + cg.w * 0.3) & (pts[:, 0] < cg.x + cg.w * 0.7)
             ymax = pts[mid, 1].max() if mid.any() else pts[:, 1].max()
             res.append((q.id, float(ymax)))
+    return res
+
+
+def _pull_strips(b: Built) -> list:
+    """Monte bir şerit kartların altından U çizip yukarı çıkıyorsa çekme mekanizması olarak değerlendirir."""
+    res = []
+    for cg in b.contents:
+        if cg.under:
+            continue
+        base = b.panels[cg.panel]
+        inv = np.linalg.inv(b.matrix(base.id, 1.0))
+
+        def to_base(pid, x, y):
+            v = inv @ b.matrix(pid, 1.0) @ np.array([x, y, 0.0, 1.0])
+            return v[:3]
+
+        base_top = max(y for _, y in base.poly)
+        for part_id, root in b.roots.items():
+            rp = b.panels[root]
+            if rp.mount is None or not rp.mount.ana_panel:
+                continue
+            for c in b.panels.values():
+                if c.parent != root or abs(c.angle) < 150:
+                    continue
+                ys = [to_base(c.id, x, y)[1] for x, y in c.quad]
+                zs = [to_base(c.id, x, y)[2] for x, y in c.quad]
+                if max(abs(z) for z in zs) > 3 * c.t + 1:
+                    continue  # tabana yatmıyor: çekme şeridi değil
+                anchors = [to_base(f["panel"], *f["xy"])[1] for f in b.fasteners if f["panel"] in (root,)]
+                anchor = max(anchors) if anchors else max(to_base(root, x, y)[1] for x, y in rp.quad)
+                lift = max(0.0, anchor - 6 - cg.y)
+                visible = cg.y + cg.h + lift - base_top
+                tab = max(ys) - base_top
+                name = b.parts[part_id].ad or part_id
+                res.append(Finding("bilgi", "cekme", f"{name}: çekince kartlar ~{lift:.0f} mm yükselir; en üstte ~{visible:.0f} mm "
+                                                     f"görünür. Şeridin tutma ucu gövdeden {tab:.0f} mm taşar."))
+                if visible < 15:
+                    res.append(Finding("uyari", "cekme_az", f"{name}: çekince kartların yalnızca ~{visible:.0f} mm'si görünür; "
+                                                            "tutmak için ≥15 mm gerekir (perçini yukarı alın / şeridi uzatın)."))
+                if tab < 12:
+                    res.append(Finding("uyari", "cekme_ucu", f"{name}: şerit ucu gövdeden {tab:.0f} mm taşıyor; parmakla tutmak "
+                                                             "için ≥12 mm olmalı."))
     return res
