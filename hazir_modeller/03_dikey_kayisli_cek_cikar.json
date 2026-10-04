@@ -1,0 +1,367 @@
+{
+  "ad": "Dikey Kayışlı Çek-Çıkar",
+  "konsept": "Kartlar kısa kenardan girer; ince, uzun, gömlek cebine yakışan dikey bir siluet. Arkadan gelen dar kayış üstten kartları kilitler ve önde tek çıtçıtla kapanır: kartlar ters çevrilse de düşmez. Kayışı açıp arka yüzdeki şerit ucunu çekince 7 kart yükselir; ön bölmede üçe katlanmış banknotlar durur.",
+  "kategori": "kartlik",
+  "malzeme": "vaketa",
+  "kalinlik": "1.4",
+  "renk": "#3d2a1e",
+  "degiskenler": [
+    {
+      "ad": "kart_adet",
+      "deger": "7",
+      "aciklama": "kapasite"
+    },
+    {
+      "ad": "ts",
+      "deger": "1.0",
+      "aciklama": "şerit kalınlığı"
+    },
+    {
+      "ad": "para",
+      "deger": "2.0",
+      "aciklama": "katlanmış banknot destesi"
+    },
+    {
+      "ad": "S",
+      "deger": "kart_adet*kart_k + 0.6",
+      "aciklama": "kart yığını"
+    },
+    {
+      "ad": "g",
+      "deger": "S + para + t + 2*ts",
+      "aciklama": "körük"
+    },
+    {
+      "ad": "W",
+      "deger": "kart_y + 3",
+      "aciklama": "dikey en"
+    },
+    {
+      "ad": "Hb",
+      "deger": "kart_g + 1",
+      "aciklama": "arka boy (kartlar tamamen içeride)"
+    },
+    {
+      "ad": "Hf",
+      "deger": "Hb*0.7",
+      "aciklama": "ön boy"
+    },
+    {
+      "ad": "sw",
+      "deger": "16",
+      "aciklama": "şerit eni"
+    },
+    {
+      "ad": "ru",
+      "deger": "(g + 2*kr - 2*ts)/2",
+      "aciklama": "U yarıçapı"
+    },
+    {
+      "ad": "my",
+      "deger": "ru + ts + 1.5",
+      "aciklama": "montaj yüksekliği"
+    },
+    {
+      "ad": "kok",
+      "deger": "26",
+      "aciklama": "şerit kökü"
+    },
+    {
+      "ad": "cy",
+      "deger": "my + kok + 8",
+      "aciklama": "çıtçıt yüksekliği"
+    },
+    {
+      "ad": "sy",
+      "deger": "Hb - 9",
+      "aciklama": "şerit yuvası"
+    },
+    {
+      "ad": "uc",
+      "deger": "26",
+      "aciklama": "tutma ucu"
+    },
+    {
+      "ad": "kw",
+      "deger": "22",
+      "aciklama": "kayış eni"
+    },
+    {
+      "ad": "kb",
+      "deger": "Hb - cy + 11",
+      "aciklama": "kayış boyu"
+    },
+    {
+      "ad": "boyun",
+      "deger": "10",
+      "aciklama": "kilit boynu"
+    }
+  ],
+  "parcalar": [
+    {
+      "id": "govde",
+      "ad": "Gövde",
+      "adet": 1,
+      "paneller": [
+        {
+          "id": "arka",
+          "ad": "Arka",
+          "genislik": "W",
+          "yukseklik": "Hb",
+          "koseler": {
+            "sag_ust": "4",
+            "sol_ust": "4"
+          }
+        },
+        {
+          "id": "alt_koruk",
+          "ad": "Alt körük",
+          "genislik": "W",
+          "yukseklik": "g",
+          "ebeveyn": "arka",
+          "kenar": "alt",
+          "aci": "90",
+          "kat_sirasi": 1
+        },
+        {
+          "id": "on",
+          "ad": "Ön",
+          "genislik": "W",
+          "yukseklik": "Hf",
+          "ebeveyn": "alt_koruk",
+          "kenar": "ust",
+          "aci": "90",
+          "kat_sirasi": 1
+        },
+        {
+          "id": "yan_sol",
+          "ad": "Yan",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "ebeveyn": "on",
+          "kenar": "sol",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "yan_sag",
+          "ad": "Yan",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "ebeveyn": "on",
+          "kenar": "sag",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "boyun_sol",
+          "ad": "dil",
+          "genislik": "boyun",
+          "yukseklik": "12",
+          "ebeveyn": "yan_sol",
+          "kenar": "ust",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "boyun_sag",
+          "ad": "dil",
+          "genislik": "boyun",
+          "yukseklik": "12",
+          "ebeveyn": "yan_sag",
+          "kenar": "ust",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "kafa_sol",
+          "ad": "kilit",
+          "genislik": "boyun + t + 4",
+          "yukseklik": "9",
+          "ebeveyn": "boyun_sol",
+          "kenar": "ust",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "yariktan_gecer": true,
+          "koseler": {
+            "sag_ust": "3",
+            "sol_ust": "3"
+          }
+        },
+        {
+          "id": "kafa_sag",
+          "ad": "kilit",
+          "genislik": "boyun + t + 4",
+          "yukseklik": "9",
+          "ebeveyn": "boyun_sag",
+          "kenar": "ust",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "yariktan_gecer": true,
+          "koseler": {
+            "sag_ust": "3",
+            "sol_ust": "3"
+          }
+        },
+        {
+          "id": "kayis_sirt",
+          "ad": "Kayış sırtı",
+          "genislik": "kw",
+          "yukseklik": "g + t",
+          "ebeveyn": "arka",
+          "kenar": "ust",
+          "aci": "90",
+          "kat_sirasi": 4,
+          "ofset": "(W - kw)/2"
+        },
+        {
+          "id": "kayis",
+          "ad": "Kayış",
+          "genislik": "kw",
+          "yukseklik": "kb",
+          "ebeveyn": "kayis_sirt",
+          "kenar": "ust",
+          "aci": "90",
+          "kat_sirasi": 4,
+          "profil_ust": {
+            "tip": "yuvarlak",
+            "olcu": "0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "serit",
+      "ad": "Çekme şeridi",
+      "adet": 1,
+      "kalinlik": "ts",
+      "montaj": {
+        "ana_panel": "on",
+        "x": "(W - sw)/2",
+        "y": "my",
+        "yuz": "ic"
+      },
+      "paneller": [
+        {
+          "id": "serit_on",
+          "ad": "şerit kökü",
+          "genislik": "sw",
+          "yukseklik": "kok",
+          "koseler": {
+            "sag_ust": "3",
+            "sol_ust": "3"
+          }
+        },
+        {
+          "id": "serit_arka",
+          "ad": "şerit kolu",
+          "genislik": "sw",
+          "yukseklik": "sy - my",
+          "ebeveyn": "serit_on",
+          "kenar": "alt",
+          "aci": "180",
+          "kat_sirasi": 5,
+          "kivrim_yaricapi": "ru"
+        },
+        {
+          "id": "serit_uc",
+          "ad": "tutma ucu",
+          "genislik": "sw",
+          "yukseklik": "uc",
+          "ebeveyn": "serit_arka",
+          "kenar": "ust",
+          "aci": "0",
+          "kat_sirasi": 5,
+          "yariktan_gecer": true,
+          "profil_ust": {
+            "tip": "yuvarlak",
+            "olcu": "0"
+          }
+        }
+      ]
+    }
+  ],
+  "ozellikler": [
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sol",
+      "x": "-t/2",
+      "y": "12",
+      "genislik": "boyun + t",
+      "aci": "0",
+      "hedefler": [
+        "arka"
+      ]
+    },
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sag",
+      "x": "-t/2",
+      "y": "12",
+      "genislik": "boyun + t",
+      "aci": "0",
+      "hedefler": [
+        "arka"
+      ]
+    },
+    {
+      "tip": "citcit",
+      "panel": "kayis",
+      "x": "kw/2",
+      "y": "kb - kw/2",
+      "boyut": "mini"
+    },
+    {
+      "tip": "percin",
+      "panel": "serit_on",
+      "x": "sw/2",
+      "y": "kok - 16",
+      "hedefler": [
+        "on"
+      ]
+    },
+    {
+      "tip": "percin",
+      "panel": "serit_on",
+      "x": "sw/2",
+      "y": "kok - 7",
+      "hedefler": [
+        "on"
+      ]
+    },
+    {
+      "tip": "kilit_yarigi",
+      "panel": "serit_arka",
+      "x": "-ts/2",
+      "y": "sy - my",
+      "genislik": "sw + ts",
+      "aci": "0",
+      "hedefler": [
+        "arka"
+      ],
+      "etiket": "şerit çıkışı"
+    }
+  ],
+  "icerikler": [
+    {
+      "tip": "ozel",
+      "adet": 7,
+      "panel": "arka",
+      "x": "1.5",
+      "y": "0.3",
+      "genislik": "kart_y",
+      "yukseklik": "kart_g",
+      "kalinlik": "kart_k"
+    },
+    {
+      "tip": "ozel",
+      "adet": 1,
+      "panel": "on",
+      "x": "(W - 52)/2",
+      "y": "6",
+      "genislik": "52",
+      "yukseklik": "Hf - 2",
+      "kalinlik": "para"
+    }
+  ]
+}

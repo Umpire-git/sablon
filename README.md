@@ -95,6 +95,13 @@ t·0.8 yarıçap (kalınlık değişmez).
 Geometri motorun modelinden birebir alınır; Blender yalnızca ışık ve malzemeyi gerçekçi hesaplar, yani
 görseldeki ürün kalıptan çıkan üründür. Daha yüksek kalite için `SABLON_ORNEK=128` ortam değişkeni verilebilir.
 
+## Hazır modeller (yapay zekâ gerekmez)
+
+`hazir_modeller/` klasöründe simülasyondan hatasız geçmiş çekme şeritli kartlıklar var:
+Kalkan Kapaklı, Hilal, Dikey Kayışlı, Zırh Kanatlı. `paket.bat`'a çift tıklayın: her model için
+A4/Letter/tam boy PDF kalıp, SVG, DXF, 3B görüntüleyici, ürün görselleri, Etsy metni ve (Blender kuruluysa)
+fotoğraf gerçekliğinde görseller kendi klasörüne üretilir. Tamamen ücretsizdir.
+
 ## Kullanım
 
 ```bash

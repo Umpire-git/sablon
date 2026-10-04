@@ -696,3 +696,14 @@ def test_ideas_keep_valid_when_credit_runs_out():
     saved = []
     res = ai.ideas("x", n=2, client=Broke(), seed=1, log=lambda *_: None, on_valid=lambda d, f: saved.append(d.ad))
     assert [d.ad for d, _ in res] == [good.ad] and saved == [good.ad]
+
+
+@pytest.mark.parametrize("path", sorted(__import__("glob").glob("hazir_modeller/*.json")))
+def test_ready_models_are_valid(path):
+    b = build(from_dict(json.load(open(path, encoding="utf-8"))))
+    fs = run_checks(b)
+    assert not [f for f in fs if f.level == "hata"], path
+    assert not [f for f in fs if f.level == "uyari" and f.code in ai.QUALITY], path
+    from sablon.checks import pull_strip_data
+    d = pull_strip_data(b)[0]
+    assert d["visible"] >= 15 and d["tab"] >= 12
