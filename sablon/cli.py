@@ -232,7 +232,7 @@ def cmd_cikti(a):
         print(f"Blender ile fotogerçekçi görseller ({a.foto}) hazırlanıyor; görsel başına "
               f"{'birkaç saniye–yarım dakika' if a.foto == 'hizli' else '1–3 dakika'} sürebilir...")
         try:
-            made += render_photos(doc.built, base, a.foto)
+            made += render_photos(doc.built, base, a.foto, doku=a.doku)
         except BlenderYok as e:
             print(f"  ⚠ {e}")
     print("Oluşturulan dosyalar:")
@@ -291,6 +291,7 @@ def main(argv: list[str] | None = None):
     s.add_argument("--bicim", default="a4,letter,full,svg,dxf,3b,gorsel")
     s.add_argument("--hizli", action="store_true", help="Düşük çözünürlüklü görseller (hızlı)")
     s.add_argument("--foto", choices=["hizli", "kaliteli"], help="Blender ile fotogerçekçi ürün görselleri")
+    s.add_argument("--doku", help="Gerçek deri dokusu klasörü (ambientCG / Poly Haven PBR: Color, Roughness, Normal)")
     s.add_argument("--zorla", action="store_true")
     s.set_defaults(f=cmd_cikti)
 

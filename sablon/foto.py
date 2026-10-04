@@ -42,7 +42,8 @@ def _hex(c: str):
     return [v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in srgb]
 
 
-def scene_data(b: Built, fold=1.0, az=-35.0, el=32.0, flip=False, size=(1600, 1200), contents=True) -> dict:
+def scene_data(b: Built, fold=1.0, az=-35.0, el=32.0, flip=False, size=(1600, 1200), contents=True,
+               doku: str | None = None) -> dict:
     from .render3d import build_mesh
     mesh = build_mesh(b, fold, show_contents=contents)
     P = np.stack(mesh.P).astype(float)
@@ -64,6 +65,7 @@ def scene_data(b: Built, fold=1.0, az=-35.0, el=32.0, flip=False, size=(1600, 12
         "base": _hex(b.design.renk), "crazy": b.design.malzeme == "crazy_horse",
         "floor": [0.62, 0.58, 0.53], "zmin": float(allp[:, 2].min()), "ctr": ctr.tolist(),
         "radius": rad, "eye": eye.tolist(), "size": list(size),
+        "doku": os.path.abspath(doku) if doku else os.environ.get("SABLON_DOKU", ""),
     }
 
 
@@ -127,12 +129,12 @@ def render_photo(data: dict, out_path: str, quality: str = "kaliteli") -> str:
         os.unlink(tmp)
 
 
-def render_photos(b: Built, base: str, quality: str = "kaliteli", views=None, log=print) -> list[str]:
+def render_photos(b: Built, base: str, quality: str = "kaliteli", views=None, log=print, doku: str | None = None) -> list[str]:
     size = (1000, 750) if quality == "hizli" else (1600, 1200)
     out = []
     for name in views or VIEWS:
         v = VIEWS[name]
-        data = scene_data(b, v["fold"], v["az"], v["el"], v["flip"], size, contents=name != "acinim")
+        data = scene_data(b, v["fold"], v["az"], v["el"], v["flip"], size, contents=name != "acinim", doku=doku)
         path = f"{base}_foto_{name}.png"
         import time
         t0 = time.time()

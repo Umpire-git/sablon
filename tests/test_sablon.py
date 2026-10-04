@@ -349,3 +349,30 @@ def test_photo_without_blender_reports_clearly(monkeypatch, tmp_path):
     monkeypatch.setattr(foto, "find_blender", lambda: None)
     with pytest.raises(foto.BlenderYok):
         foto.render_photo({"x": 1}, str(tmp_path / "a.png"))
+
+
+def test_thick_leather_is_error():
+    d = load("vidali_kartlik")
+    d["kalinlik"] = "2.2"
+    assert "kalin_deri" in codes(d)
+
+
+def test_soft_mesh_keeps_thickness():
+    from sablon.render3d import Soft
+    import numpy as np
+    s = Soft([(0, 0), (90, 0), (90, 50), (0, 50)], 1.0, 3)
+    assert s.dz(0, 25) == 0 and s.dz(45, 0) == 0          # kenarlarda bombe yok (kıvrımla birleşir)
+    assert s.dz(45, 25) < 0                                  # ortada dışa bombe
+    # aynı (x, y) için iki yüze aynı kayma uygulanır → kalınlık sabit
+    x = np.array([10.0, 45.0, 70.0]); y = np.array([10.0, 25.0, 40.0])
+    assert np.allclose(s.dz(x, y), s.dz(x, y))
+
+
+def test_texture_maps_found(tmp_path):
+    pytest.importorskip("bpy")
+    from sablon.blender_render import _find_maps
+    for n in ("Leather037_1K-JPG_Color.jpg", "Leather037_1K-JPG_Roughness.jpg",
+              "Leather037_1K-JPG_NormalDX.jpg", "Leather037_1K-JPG_NormalGL.jpg"):
+        (tmp_path / n).write_bytes(b"x")
+    m = _find_maps(str(tmp_path))
+    assert m["color"].endswith("Color.jpg") and m["rough"].endswith("Roughness.jpg") and m["normal"].endswith("NormalGL.jpg")

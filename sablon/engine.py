@@ -2,7 +2,7 @@
 
 Ana fikirler
 * Her panelin bir yerel çerçevesi var. Çocuk panel, ebeveyn kenarına menteşeyle bağlı.
-* Deri keskin katlanmaz: iç yarıçapı r = BEND·t olan bir kıvrımla bükülür. Açınımda çocuk,
+* Deri keskin katlanmaz: iç yarıçapı r = BEND·t (≈0.8t) olan bir kıvrımla bükülür. Açınımda çocuk,
   kıvrımın nötr ekseni uzunluğu kadar uzaklaştırılır:
   kat_payi = radyan(|açı|) * (r + t/2). Bu şerit kalıba eklenir, kat çizgisi şeridin ortasına
   çizilir. Panel ölçüleri bitmiş ölçülerdir (kıvrımın başladığı yerden).
@@ -27,7 +27,7 @@ from .geometry import (Affine2, Circle, Line, Segment, arc_from_3pts, discretize
 from .pattern import Kind, Piece, Text
 
 EDGES = ("alt", "sag", "ust", "sol")
-BEND = 0.5  # kıvrım iç yarıçapı / kalınlık
+BEND = 0.8  # kıvrım iç yarıçapı / kalınlık (1.4–1.8 mm sert deri inceltilmeden ~0.8t ile döner)
 
 
 @dataclass

@@ -7,7 +7,8 @@ metin alanına "", listeye [] yaz.
 
 TÜM ÜRÜNLER DİKİŞSİZDİR. Dikiş ve yapıştırıcı yoktur. Birleştirme yalnızca şunlarla yapılır:
 katlama, dil-yarık kilidi (kilit_yarigi + yariktan_gecer kafa), çıtçıt, çift başlı perçin, şikago vidası,
-içeriğin geçirildiği yarıklar. Malzeme yalnızca deridir: vaketa veya crazy_horse.
+içeriğin geçirildiği yarıklar. Malzeme yalnızca deridir: vaketa veya crazy_horse. Kartlık ve cüzdanlarda kalınlık 1.2–1.8 mm
+(tipik 1.4–1.6 mm); 1.8 mm üstü hata sayılır.
 
 ## Değişkenler ve ifadeler
 - Ölçü alanları sayı ya da ifade içeren metindir: "kart_g + 2*bosluk".

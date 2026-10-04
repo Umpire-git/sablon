@@ -56,7 +56,14 @@ Mac/Linux: `pip install -e ".[dev]"`, Blender'ı kurun (veya Python 3.11'de `pip
 | `hizli` | Eevee (ekran kartıyla), yoksa Cycles 24 örnek | saniyeler – yarım dakika | Ön izleme |
 | `kaliteli` | Cycles 64 örnek + gürültü giderici | 1–3 dk (i5 + MX ekran kartı sınıfı) | Etsy görselleri |
 
+**Gerçek deri dokusu (önerilir):** ücretsiz (CC0) bir PBR deri dokusu indirin, ör. ambientCG'de "Leather"
+araması → bir doku → **1K-JPG** ZIP (veya Poly Haven → Textures → leather). ZIP'i proje klasöründe `doku`
+adlı klasöre açın. `deneme.bat` bu klasörü kendisi kullanır; elle: `sablon cikti proje.json --foto kaliteli --doku doku`.
+Doku yalnızca gözenek/kırışık desenini verir; renk tasarımdaki deri renginden gelir.
+
 Görseller: `_foto_urun` (önden), `_foto_arka` (ters çevrilmiş), `_foto_yari_acik` (katlanırken), `_foto_acinim`.
+Model yumuşak deri gibi üretilir: perdahlı yuvarlak kenarlar, panellerde hafif bombe ve dalgalanma, kıvrımlarda
+t·0.8 yarıçap (kalınlık değişmez).
 Geometri motorun modelinden birebir alınır; Blender yalnızca ışık ve malzemeyi gerçekçi hesaplar, yani
 görseldeki ürün kalıptan çıkan üründür. Daha yüksek kalite için `SABLON_ORNEK=128` ortam değişkeni verilebilir.
 
@@ -98,6 +105,7 @@ sablon ogren referans1.pdf referans2.pdf
 
 ## Malzemeler
 
+- Kartlık/cüzdan için kalınlık **1.2–1.8 mm** (tipik 1.4–1.6); 1.8 mm üstü hata sayılır.
 - `vaketa`: bitkisel tabaklı, sert; kalıplanır, kenarı su/tokonole ile perdahlanır. Dikişsiz kilitler için ideal.
 - `crazy_horse`: yağlı-mumlu pull-up deri; daha yumuşak, nemlendirilmez, kenarı boyanır. Kilit kafaları daha geniş
   istenir, çıtçıta takviye pulu önerilir; 3B görselde kıvrım yerlerinde renk açılması gösterilir.
@@ -114,7 +122,7 @@ Ayrıntılar: [`sablon/bilgi/tasarim_dili.md`](sablon/bilgi/tasarim_dili.md), ö
 
 Motorun "kafada kurduğu" şeyler:
 
-- **Gerçek kıvrım**: deri keskin katlanmaz; her kat iç yarıçapı t/2 olan bir kıvrımdır, kat payı
+- **Gerçek kıvrım**: deri keskin katlanmaz; her kat iç yarıçapı ≈0.8·t olan bir kıvrımdır, kat payı
   `radyan(|açı|)·(r + t/2)` olarak kalıba eklenir.
 - **Katlanınca hizalama**: çıtçıtın erkek parçası, kilit yarığı ve vida/perçin delikleri, katlanınca
   karşısına gelen panelde otomatik konumlanır.

@@ -55,32 +55,141 @@ def _rot(m, n):
     return v / np.linalg.norm(v, axis=-1, keepdims=True)
 
 
-def _slab(mesh: Mesh, poly2d, m, z0, z1, col, mat_face=LEATHER, mat_side=EDGE, side_col=None):
+class Soft:
+    """Deri levhanın yumuşak görünümü: kenarları 0 olan hafif bombe + organik dalgalanma.
+
+    Yer değiştirme levhanın normal yönünde ve iki yüzde aynıdır: kalınlık değişmez, deri esnek bir
+    levha gibi bükülür. Kenarlarda sıfır olduğu için kıvrımlar ve komşu panellerle birleşim bozulmaz.
+    """
+
+    def __init__(self, poly, amp: float, seed: int):
+        P = np.array(poly)
+        self.x0, self.y0 = P.min(0)
+        self.x1, self.y1 = P.max(0)
+        rng = np.random.default_rng(seed)
+        self.ph = rng.uniform(0, 2 * np.pi, 4)
+        self.fr = rng.uniform(0.8, 1.7, 2)
+        self.amp = amp
+
+    def dz(self, x, y):
+        if self.amp <= 0:
+            return np.zeros_like(np.asarray(x, float))
+        u = np.clip((np.asarray(x) - self.x0) / max(self.x1 - self.x0, 1e-6), 0, 1)
+        v = np.clip((np.asarray(y) - self.y0) / max(self.y1 - self.y0, 1e-6), 0, 1)
+        env = np.sin(np.pi * u) * np.sin(np.pi * v)
+        wav = np.sin(2 * np.pi * (u * self.fr[0]) + self.ph[0]) * np.sin(2 * np.pi * (v * self.fr[1]) + self.ph[1])
+        return -self.amp * env * (1.0 + 0.45 * wav)  # dışa (−z) doğru bombe
+
+    def grad(self, x, y, h=0.05):
+        return ((self.dz(x + h, y) - self.dz(x - h, y)) / (2 * h), (self.dz(x, y + h) - self.dz(x, y - h)) / (2 * h))
+
+
+FLAT = None
+
+
+def _subdivide(tri: np.ndarray, maxlen: float) -> list:
+    """En uzun kenardan ikiye bölerek üçgenleri küçültür (üçgen sayısı alanla orantılı kalır)."""
+    todo, done = [tri], []
+    while todo:
+        t = todo.pop()
+        L = [np.linalg.norm(t[(k + 1) % 3] - t[k]) for k in range(3)]
+        k = int(np.argmax(L))
+        if L[k] <= maxlen or len(done) > 4000:
+            done.append(t)
+            continue
+        a, b, c = t[k], t[(k + 1) % 3], t[(k + 2) % 3]
+        mid = (a + b) / 2
+        todo += [np.array([a, mid, c]), np.array([mid, b, c])]
+    return done
+
+
+def _slab(mesh: Mesh, poly2d, m, z0, z1, col, mat_face=LEATHER, mat_side=EDGE, side_col=None,
+          soft: Soft | None = None, round_r: float = 0.0, flat_edges=None, maxlen: float = 4.0):
+    """Ekstrüde levha. soft: yüzey deformasyonu; round_r: kenar yuvarlatma yarıçapı (perdahlı deri kenarı);
+    flat_edges(a, b) -> True ise o kenar yuvarlatılmaz (kat menteşesi)."""
     if len(poly2d) < 3:
         return
-    pts = poly2d if polygon_area(poly2d) > 0 else poly2d[::-1]
-    tris = triangulate(pts)
-    P2 = np.array(pts)
-    top = _apply(m, np.c_[P2, np.full(len(P2), z1)])
-    bot = _apply(m, np.c_[P2, np.full(len(P2), z0)])
-    nt, nb = _rot(m, [0, 0, 1]), _rot(m, [0, 0, -1])
-    for (i, j, k) in tris:
-        uv = P2[[i, j, k]]
-        mesh.tri(top[[i, j, k]], np.tile(nt, (3, 1)), uv, col, mat_face)
-        mesh.tri(bot[[i, k, j]], np.tile(nb, (3, 1)), uv[[0, 2, 1]], col, mat_face)
-    sc = side_col or col
+    pts = np.array(poly2d if polygon_area(poly2d) > 0 else poly2d[::-1], float)
     n = len(pts)
+    t = z1 - z0
+    soft = soft or Soft(pts, 0.0, 0)
+    # kenar normalleri ve kenar yarıçapları
+    en, er = [], []
+    for i in range(n):
+        e = pts[(i + 1) % n] - pts[i]
+        L = np.hypot(*e) or 1.0
+        en.append(np.array([e[1] / L, -e[0] / L]))
+        flat = flat_edges(pts[i], pts[(i + 1) % n]) if flat_edges else False
+        er.append(0.0 if flat else round_r)
+    # köşe başına iç kaydırma vektörü X: önceki kenara er[i-1], sonraki kenara er[i] uzaklık
+    X = np.zeros((n, 2))
+    for i in range(n):
+        n1, n2, r1, r2 = en[i - 1], en[i], er[i - 1], er[i]
+        A = np.array([n1, n2])
+        if abs(np.linalg.det(A)) < 1e-6:
+            X[i] = n2 * max(r1, r2)
+        else:
+            X[i] = np.linalg.solve(A, np.array([r1, r2]))
+        lim = 3 * max(r1, r2, 1e-9)
+        if np.linalg.norm(X[i]) > lim:
+            X[i] *= lim / np.linalg.norm(X[i])
+    inner = pts - X
+    if polygon_area([tuple(q) for q in inner]) <= 0:
+        inner, X = pts.copy(), np.zeros((n, 2))
+    rot = m[:3, :3]
+
+    def to_world(xy, z):
+        dz = soft.dz(xy[:, 0], xy[:, 1])
+        P3 = np.c_[xy, z + dz]
+        return _apply(m, P3)
+
+    def face_normals(xy, sign):
+        gx, gy = soft.grad(xy[:, 0], xy[:, 1])
+        nl = np.c_[-gx * sign, -gy * sign, np.full(len(xy), sign)]
+        return _rot(m, nl)
+
+    # üst ve alt yüz (sıklaştırılmış)
+    tris = triangulate([tuple(q) for q in inner])
+    for (i, j, k) in tris:
+        for tri in _subdivide(inner[[i, j, k]], maxlen):
+            for z, sign in ((z1, 1.0), (z0, -1.0)):
+                Pw = to_world(tri, np.full(3, z))
+                Nw = face_normals(tri, sign)
+                if sign > 0:
+                    mesh.tri(Pw, Nw, tri, col, mat_face)
+                else:
+                    mesh.tri(Pw[[0, 2, 1]], Nw[[0, 2, 1]], tri[[0, 2, 1]], col, mat_face)
+    # yan yüzler: yuvarlatılmış (elips) profil
+    sc = side_col or col
+    K = 6 if round_r > 0 else 1
+    phis = np.linspace(np.pi / 2, -np.pi / 2, K + 1)
+    rings_p, rings_n = [], []
+    mid = (z0 + z1) / 2
+    for i in range(n):
+        Xi = X[i]
+        r = np.linalg.norm(Xi)
+        d = Xi / r if r > 1e-6 else (en[i - 1] + en[i]) / (np.linalg.norm(en[i - 1] + en[i]) or 1)
+        ps, ns = [], []
+        for ph in phis:
+            xy = inner[i] + Xi * np.cos(ph) if r > 1e-6 else pts[i]
+            z = mid + (t / 2) * np.sin(ph)
+            ps.append((xy[0], xy[1], z))
+            nl = np.r_[d * np.cos(ph) * (t / 2), np.sin(ph) * max(r, 1e-3)]
+            if r <= 1e-6:
+                nl = np.r_[d, 0.0]
+            ns.append(nl / (np.linalg.norm(nl) or 1))
+        ps = np.array(ps)
+        dz = soft.dz(ps[:, 0], ps[:, 1])
+        rings_p.append(_apply(m, np.c_[ps[:, :2], ps[:, 2] + dz]))
+        rings_n.append(_rot(m, np.array(ns)))
     for i in range(n):
         j = (i + 1) % n
-        e = P2[j] - P2[i]
-        L = np.hypot(*e)
-        if L < 1e-9:
-            continue
-        nn = _rot(m, [e[1] / L, -e[0] / L, 0])
-        uv = np.array([[0, 0], [L, 0], [L, 1], [0, 1]], float)
-        q = np.array([bot[i], bot[j], top[j], top[i]])
-        mesh.tri(q[[0, 1, 2]], np.tile(nn, (3, 1)), uv[[0, 1, 2]], sc, mat_side)
-        mesh.tri(q[[0, 2, 3]], np.tile(nn, (3, 1)), uv[[0, 2, 3]], sc, mat_side)
+        for k in range(len(phis) - 1):
+            q = np.array([rings_p[i][k], rings_p[j][k], rings_p[j][k + 1], rings_p[i][k + 1]])
+            N = np.array([rings_n[i][k], rings_n[j][k], rings_n[j][k + 1], rings_n[i][k + 1]])
+            uv = np.array([[0, k], [1, k], [1, k + 1], [0, k + 1]], float)
+            for o in ([0, 2, 1], [0, 3, 2]):
+                mesh.tri(q[o], N[o], uv[o], sc, mat_side)
 
 
 def _bend(mesh: Mesh, b: Built, pid: str, fold, col, mats):
@@ -168,22 +277,64 @@ def _disc_decal(mesh, m, cx, cy, z, r, col, seg=14):
         mesh.tri(np.array([c, P[i], P[(i + 1) % seg]]), np.tile(nn, (3, 1)), np.zeros((3, 2)), col, DARK)
 
 
-def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True) -> Mesh:
+def _hinge_test(b: Built, p):
+    """Panelin kat menteşesi üzerindeki kenarları (yuvarlatılmaz, kıvrımla birleşir)."""
+    lines = []
+    if p.parent:
+        lines.append(((p.hinge_x[0], 0.0), (p.hinge_x[1], 0.0)))
+    for c in b.panels.values():
+        if c.parent == p.id:
+            o, d = np.array(c.hinge_o), np.array(c.hinge_d)
+            lines.append((tuple(o + d * c.hinge_x[0]), tuple(o + d * c.hinge_x[1])))
+
+    def test(a, bb):
+        for (p0, p1) in lines:
+            p0, p1 = np.array(p0), np.array(p1)
+            v = p1 - p0
+            L = np.linalg.norm(v)
+            if L < 1e-9:
+                continue
+            u = v / L
+            for q in (a, bb):
+                w = np.array(q) - p0
+                if abs(u[0] * w[1] - u[1] * w[0]) > 0.05 or not (-0.05 <= w @ u <= L + 0.05):
+                    break
+            else:
+                return True
+        return False
+
+    return test
+
+
+def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=True) -> Mesh:
     mesh = Mesh()
     base = _hex(b.design.renk or "")
     mats = b.matrices(fold)
     edge_col = tuple(v * 0.55 for v in base)
+    softs = {}
+    for i, pid in enumerate(b.order):
+        p = b.panels[pid]
+        if soft:
+            k = 1.3 if b.design.malzeme == "crazy_horse" else 1.0
+            amp = min(1.1, 0.0125 * max(p.w, p.h)) * k if max(p.w, p.h) > 10 else 0.0
+            softs[pid] = Soft(p.poly, amp, seed=i * 7 + 3)
+        else:
+            softs[pid] = Soft(p.poly, 0.0, 0)
     for pid in b.order:
         p = b.panels[pid]
-        _slab(mesh, p.poly, mats[pid], -p.t, 0.0, base, LEATHER, EDGE, edge_col)
+        _slab(mesh, p.poly, mats[pid], -p.t, 0.0, base, LEATHER, EDGE, edge_col,
+              soft=softs[pid], round_r=min(0.45 * p.t, 0.8) if soft else 0.0,
+              flat_edges=_hinge_test(b, p) if soft else None, maxlen=5.0 if soft else 1e9)
         if p.parent:
             _bend(mesh, b, pid, fold, base, mats)
         for mk in p.marks:
             if mk.kind == Kind.SLIT:
-                for z in (0.03, -p.t - 0.03):
+                dz = float(softs[pid].dz((mk.prim.x0 + mk.prim.x1) / 2, (mk.prim.y0 + mk.prim.y1) / 2))
+                for z in (0.03 + dz, -p.t - 0.03 + dz):
                     _decal_line(mesh, mats[pid], (mk.prim.x0, mk.prim.y0), (mk.prim.x1, mk.prim.y1), z, 0.7, (0.08, 0.05, 0.03))
             elif mk.kind == Kind.HOLE and mk.prim.r < 2.6:
-                for z in (0.03, -p.t - 0.03):
+                dz = float(softs[pid].dz(mk.prim.cx, mk.prim.cy))
+                for z in (0.03 + dz, -p.t - 0.03 + dz):
                     _disc_decal(mesh, mats[pid], mk.prim.cx, mk.prim.cy, z, mk.prim.r, (0.08, 0.05, 0.03))
     if show_hardware:
         metal = (0.78, 0.74, 0.66)
@@ -191,16 +342,17 @@ def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True) -> Me
             p = b.panels[s.src]
             r = {"L20": 6.25, "L24": 7.5, "mini": 5.0}.get(s.size, 6.25)
             z, up = (-p.t, -1) if s.src_side < 0 else (0.0, 1)
+            z += float(softs[s.src].dz(s.src_xy[0], s.src_xy[1]))
             _dome(mesh, mats[s.src], *s.src_xy, z, r, 2.0, up, metal)
         for f in b.fasteners:
             p = b.panels[f["panel"]]
             r = 5.0 if f["tip"] == "vida" else 4.0
             # baş: kaynak panelin dış yüzünde; karşı baş son katın dış yüzünde
-            _dome(mesh, mats[p.id], *f["xy"], -p.t, r, 1.4, -1, metal)
+            _dome(mesh, mats[p.id], *f["xy"], -p.t + float(softs[p.id].dz(*f["xy"])), r, 1.4, -1, metal)
             last = b.panels[f["layers"][-1]]
             loc = b.to_local(last.id, b.world(p.id, f["xy"]), fold)
             side = -1 if loc[2] > 0 else 1
-            zz = -last.t if side < 0 else 0.0
+            zz = (-last.t if side < 0 else 0.0) + float(softs[last.id].dz(loc[0], loc[1]))
             _dome(mesh, mats[last.id], loc[0], loc[1], zz, r, 1.4, side, metal)
     if show_contents:
         from .geometry import discretize, rounded_rect

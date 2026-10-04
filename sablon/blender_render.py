@@ -32,7 +32,75 @@ def _principled(name, color, rough=0.5, metal=0.0, coat=0.0):
     return m, b
 
 
-def _leather(name, base, crazy, bend=False):
+def _find_maps(folder):
+    """Doku klasöründe renk / pürüzlülük / normal haritalarını bulur (ambientCG, Poly Haven adlandırmaları)."""
+    import os
+    if not folder or not os.path.isdir(folder):
+        return {}
+    files = [f for f in os.listdir(folder) if f.lower().endswith((".jpg", ".jpeg", ".png", ".exr", ".tif", ".tiff"))]
+
+    def pick(*keys, avoid=()):
+        for f in sorted(files):
+            lf = f.lower()
+            if any(k in lf for k in keys) and not any(a in lf for a in avoid):
+                return os.path.join(folder, f)
+        return None
+
+    return {"color": pick("color", "diff", "albedo", "basecolor"),
+            "rough": pick("rough"),
+            "normal": pick("normalgl", "nor_gl", "normal", avoid=("dx",)) or pick("normal", "nor_dx")}
+
+
+def _textured_leather(name, base, crazy, maps, bend=False):
+    """Gerçek deri fotoğrafından (PBR doku) malzeme; rengi tasarımın deri rengine boyanır."""
+    m, bsdf = _principled(name, base, 0.5)
+    nodes, links = m.node_tree.nodes, m.node_tree.links
+    tex = nodes.new("ShaderNodeTexCoord")
+    mp = nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (7.0, 7.0, 7.0)  # doku ~14 cm'de bir tekrar eder
+    links.new(tex.outputs["UV"], mp.inputs["Vector"])
+
+    def img(path, noncolor):
+        n = nodes.new("ShaderNodeTexImage")
+        n.image = bpy.data.images.load(path, check_existing=True)
+        if noncolor:
+            n.image.colorspace_settings.name = "Non-Color"
+        links.new(mp.outputs["Vector"], n.inputs["Vector"])
+        return n
+
+    if maps.get("color"):
+        c = img(maps["color"], False)
+        bw = nodes.new("ShaderNodeRGBToBW")
+        links.new(c.outputs["Color"], bw.inputs["Color"])
+        rng = nodes.new("ShaderNodeMapRange")
+        rng.inputs["From Min"].default_value = 0.05
+        rng.inputs["From Max"].default_value = 0.6
+        k = 1.35 if bend and crazy else 1.0
+        rng.inputs["To Min"].default_value = (0.65 if crazy else 0.8) * k
+        rng.inputs["To Max"].default_value = (1.3 if crazy else 1.12) * k
+        links.new(bw.outputs["Val"], rng.inputs["Value"])
+        mul = nodes.new("ShaderNodeMix")
+        mul.data_type = "RGBA"
+        mul.blend_type = "MULTIPLY"
+        mul.inputs["Factor"].default_value = 1.0
+        mul.inputs["A"].default_value = (*base, 1)
+        links.new(rng.outputs["Result"], mul.inputs["B"])
+        links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])
+    if maps.get("rough"):
+        r = img(maps["rough"], True)
+        links.new(r.outputs["Color"], bsdf.inputs["Roughness"])
+    if maps.get("normal"):
+        n = img(maps["normal"], True)
+        nm = nodes.new("ShaderNodeNormalMap")
+        nm.inputs["Strength"].default_value = 0.9
+        links.new(n.outputs["Color"], nm.inputs["Color"])
+        links.new(nm.outputs["Normal"], bsdf.inputs["Normal"])
+    return m
+
+
+def _leather(name, base, crazy, bend=False, maps=None):
+    if maps and maps.get("color"):
+        return _textured_leather(name, base, crazy, maps, bend)
     m, bsdf = _principled(name, base, 0.45 if crazy else 0.58, coat=0.25 if crazy else 0.05)
     nt, nodes, links = m.node_tree, m.node_tree.nodes, m.node_tree.links
     tex = nodes.new("ShaderNodeTexCoord")
@@ -51,10 +119,29 @@ def _leather(name, base, crazy, bend=False):
     ramp.color_ramp.elements[0].color = (*lo, 1)
     ramp.color_ramp.elements[1].color = (*hi, 1)
     links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
-    links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
+    # kenar/çıkıntı tonu: crazy horse çıkıntıda açılır (pull-up), vaketa kenarda koyulaşır (perdah)
+    geo = nodes.new("ShaderNodeNewGeometry")
+    pr = nodes.new("ShaderNodeMapRange")
+    pr.inputs["From Min"].default_value = 0.5
+    pr.inputs["From Max"].default_value = 0.62
+    pr.inputs["To Max"].default_value = 0.35 if crazy else 0.0
+    links.new(geo.outputs["Pointiness"], pr.inputs["Value"])
+    tint = nodes.new("ShaderNodeMix")
+    tint.data_type = "RGBA"
+    tint.blend_type = "SCREEN" if crazy else "MULTIPLY"
+    tint.inputs["B"].default_value = (0.55, 0.42, 0.3, 1) if crazy else (0.55, 0.45, 0.38, 1)
+    links.new(pr.outputs["Result"], tint.inputs["Factor"])
+    links.new(ramp.outputs["Color"], tint.inputs["A"])
+    links.new(tint.outputs["Result"], bsdf.inputs["Base Color"])
+    # pürüzlülük dalgalanması (mum / yağ parlaklığı yer yer değişir)
+    rr = nodes.new("ShaderNodeMapRange")
+    rr.inputs["To Min"].default_value = 0.35 if crazy else 0.5
+    rr.inputs["To Max"].default_value = 0.6 if crazy else 0.7
+    links.new(noise.outputs["Fac"], rr.inputs["Value"])
+    links.new(rr.outputs["Result"], bsdf.inputs["Roughness"])
     # gözenek / doku kabartısı
     vor = nodes.new("ShaderNodeTexVoronoi")
-    vor.inputs["Scale"].default_value = 2.2
+    vor.inputs["Scale"].default_value = 1.6
     links.new(mapn.outputs["Vector"], vor.inputs["Vector"])
     fine = nodes.new("ShaderNodeTexNoise")
     fine.inputs["Scale"].default_value = 1.5
@@ -76,13 +163,14 @@ def build(data):
     sc = bpy.context.scene
     base = tuple(data["base"])
     crazy = data["crazy"]
+    maps = _find_maps(data.get("doku"))
     mats = [
         _principled("bos", (0.5, 0.5, 0.5))[0],                                   # 0 (kullanılmaz)
-        _leather("deri", base, crazy),                                             # 1 LEATHER
+        _leather("deri", base, crazy, maps=maps),                                  # 1 LEATHER
         _principled("kenar", tuple(c * 0.42 for c in base), 0.32, coat=0.4)[0],   # 2 EDGE (perdahlı)
-        _leather("kivrim", base, crazy, bend=True),                                # 3 BEND
+        _leather("kivrim", base, crazy, bend=True, maps=maps),                     # 3 BEND
         _principled("metal", (0.86, 0.82, 0.74), 0.22, metal=1.0)[0],             # 4 METAL
-        _principled("kart", (0.10, 0.22, 0.48), 0.18, coat=0.8)[0],               # 5 CARD_TOP
+        _principled("kart", (0.06, 0.13, 0.32), 0.3, coat=0.25)[0],               # 5 CARD_TOP
         _principled("kart_kenar", (0.92, 0.92, 0.88), 0.5)[0],                    # 6 CARD_SIDE
         _principled("yarik", (0.02, 0.014, 0.01), 0.9)[0],                        # 7 DARK
     ]

@@ -128,7 +128,10 @@ def run_checks(b: Built, steps: bool = True) -> list:
     if not lo - 1e-6 <= t <= hi + 1e-6:
         out.append(Finding("uyari", "kalinlik", f"{mat.ad} için önerilen kalınlık {lo}–{hi} mm; tasarım {t:g} mm."))
     if t < 1.2:
-        out.append(Finding("uyari", "ince_dikissiz", f"{t:g} mm deri dikişsiz yapıda şeklini tutmaz; 1.4–1.8 mm önerilir."))
+        out.append(Finding("uyari", "ince_dikissiz", f"{t:g} mm deri dikişsiz yapıda şeklini tutmaz; 1.4–1.6 mm önerilir."))
+    if t > 1.8 + 1e-6:
+        out.append(Finding("hata", "kalin_deri", f"{t:g} mm deri kartlık/cüzdan için fazla kalın: ürün hantal olur, katlar "
+                                                 "açılır, kilit zor takılır. En fazla 1.6–1.8 mm kullanın."))
 
     # --- katlı hâlde çarpışma (hatalı üretim)
     samples = {pid: _samples(b.panels[pid]) for pid in b.order}

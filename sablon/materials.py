@@ -33,7 +33,7 @@ MATERIALS: dict[str, Material] = {
             "vaketa", "Vaketa (bitkisel tabaklı dana)", "deri",
             "Sıkı, dolgun, bitkisel tabaklanmış dana derisi. Kenarı çok iyi perdahlanır, ıslakken kalıplanır, "
             "zamanla patina yapar.",
-            (1.0, 2.0), "#c4925e", True, True,
+            (1.2, 1.8), "#c4925e", True, True,
             "Kenar kırıcıyla pah kırın, 400→800→1200 kum zımparalayın, su veya tokonole/kitre ile kanvas veya "
             "ahşap perdah aletiyle parlatın. İsteğe bağlı kenar boyası.",
             "Kat çizgisini kemik bıçakla bastırın; deri hafif nemliyken (ılık su, sünger) katlayıp ağırlık "
@@ -46,7 +46,7 @@ MATERIALS: dict[str, Material] = {
             "crazy_horse", "Crazy Horse (yağlı-mumlu pull-up deri)", "deri",
             "Yağ ve mumla doyurulmuş, bükülünce/çizilince rengi açılan (pull-up) deri. Vintage görünüm; "
             "vaketaya göre daha yumuşak ve esnek.",
-            (1.2, 2.2), "#5b3820", False, False,
+            (1.2, 1.8), "#5b3820", False, False,
             "Yağlı yapı nedeniyle su ile perdahlanmaz: pah kırıp zımparalayın, ardından kenar boyası (2–3 ince kat, "
             "aralarda zımpara) veya arı mumu ile sıcak perdah uygulayın.",
             "NEMLENDİRMEYİN (lekelenir). Kemik bıçakla bastırıp katlayın; hafif ısı (saç kurutma makinesi) "
