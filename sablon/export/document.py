@@ -52,5 +52,6 @@ def render_images(doc: Document, quick: bool = False):
         if st.image.get("view") == "flat":
             continue
         fold = st.image["fold"]
-        doc.images[f"step{i}"] = render(b, fold=fold, az=-30, el=38, size=small, ss=ss,
-                                        show_contents=(fold == 1.0))
+        pull = st.image.get("pull", 0.0)
+        doc.images[f"step{i}"] = render(b, fold=fold, az=160 if pull else -30, el=32 if pull else 38, size=small,
+                                        ss=ss, show_contents=(fold == 1.0), pull=pull)

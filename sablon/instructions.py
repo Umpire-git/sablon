@@ -200,6 +200,14 @@ def make(b: Built) -> Instructions:
         shape.append("Saç kurutma makinesiyle ılıtıp elle bastırarak şekillendirin; soğurken şeklini alır.")
     steps.append(Step("Şekillendirme", shape))
     steps.append(Step("Son işlem", [mat.son_islem], {"fold": 1.0, "caption": "Bitmiş ürün"}))
+    from .checks import pull_strip_data
+    for d in pull_strip_data(b):
+        steps.append(Step("Kullanım: çekme şeridi", [
+            f"Gövdenin altından taşan şerit ucunu tutup aşağı doğru çekin: şerit U kıvrımından makara gibi döner, "
+            f"kartlar yaklaşık {d['lift']:.0f} mm yükselir ve üstten {d['visible']:.0f} mm görünür.",
+            "Kartları elle geri ittiğinizde şerit de eski yerine döner.",
+            "Şerit ucunu birkaç kez çekip bırakarak deriyi alıştırın; ilk günlerde biraz sert gelmesi normaldir.",
+        ], {"fold": 1.0, "pull": 1.0, "caption": "Şerit çekilmiş: kartlar yükseldi"}))
 
     n_feat = len(b.locks) + len(snaps) + len(b.fasteners)
     score = 1 + (len(fold_levels) > 2) + (len(b.locks) > 0) + (n_feat > 3) + (len(b.parts) > 1)

@@ -192,14 +192,17 @@ def _slab(mesh: Mesh, poly2d, m, z0, z1, col, mat_face=LEATHER, mat_side=EDGE, s
                 mesh.tri(q[o], N[o], uv[o], sc, mat_side)
 
 
-def _bend(mesh: Mesh, b: Built, pid: str, fold, col, mats):
-    """Çocuk panelin menteşesindeki yuvarlak kıvrım yüzeyi."""
+def _bend(mesh: Mesh, b: Built, pid: str, fold, col, mats, shift=None):
+    """Çocuk panelin menteşesindeki yuvarlak kıvrım yüzeyi (shift: dünya koordinatında öteleme)."""
     p = b.panels[pid]
     f = fold.get(pid, 0.0) if isinstance(fold, dict) else fold
     th = math.radians(p.angle * f)
     if abs(th) < 1e-3:
         return
     H = b.hinge_frame(pid, fold)
+    if shift is not None:
+        H = H.copy()
+        H[:3, 3] += shift
     zh = p.bend_r if p.angle >= 0 else -p.t - p.bend_r
     x0, x1 = p.hinge_x
     nseg = max(3, int(abs(math.degrees(th)) / 9))
@@ -306,10 +309,29 @@ def _hinge_test(b: Built, p):
     return test
 
 
-def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=True) -> Mesh:
+def pull_offsets(b: Built, mats: dict, pull: float):
+    """Çekme şeridi çekildiğinde: şerit kolu 2Δ, U kıvrımı ve kartlar Δ yükselir (Δ = yükselme × pull)."""
+    if pull <= 0:
+        return {}, {}, {}
+    from .checks import pull_strip_data
+    child_shift, bend_shift, content_shift = {}, {}, {}
+    for d in pull_strip_data(b):
+        delta = d["lift"] * pull
+        v = mats[d["base"]][:3, :3] @ np.array([0.0, 1.0, 0.0])
+        child_shift[d["child"]] = (v * 2 * delta, delta)
+        bend_shift[d["child"]] = v * delta
+        content_shift[d["content"]] = delta
+    return child_shift, bend_shift, content_shift
+
+
+def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=True, pull: float = 0.0) -> Mesh:
     mesh = Mesh()
     base = _hex(b.design.renk or "")
     mats = b.matrices(fold)
+    child_shift, bend_shift, content_shift = pull_offsets(b, mats, pull)
+    for pid, (vec, _) in child_shift.items():
+        mats[pid] = mats[pid].copy()
+        mats[pid][:3, 3] += vec
     edge_col = tuple(v * 0.55 for v in base)
     softs = {}
     for i, pid in enumerate(b.order):
@@ -326,7 +348,11 @@ def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=
               soft=softs[pid], round_r=min(0.45 * p.t, 0.8) if soft else 0.0,
               flat_edges=_hinge_test(b, p) if soft else None, maxlen=5.0 if soft else 1e9)
         if p.parent:
-            _bend(mesh, b, pid, fold, base, mats)
+            _bend(mesh, b, pid, fold, base, mats, shift=bend_shift.get(pid))
+        if pid in child_shift:  # U ile yükselen kol arasında kalan şerit
+            dl = child_shift[pid][1]
+            x0, x1 = p.hinge_x
+            _slab(mesh, [(x0, -dl), (x1, -dl), (x1, 0.0), (x0, 0.0)], mats[pid], -p.t, 0.0, base, LEATHER, EDGE, edge_col)
         for mk in p.marks:
             if mk.kind == Kind.SLIT:
                 dz = float(softs[pid].dz((mk.prim.x0 + mk.prim.x1) / 2, (mk.prim.y0 + mk.prim.y1) / 2))
@@ -356,9 +382,9 @@ def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=
             _dome(mesh, mats[last.id], loc[0], loc[1], zz, r, 1.4, side, metal)
     if show_contents:
         from .geometry import discretize, rounded_rect
-        for cg in b.contents:
+        for ci, cg in enumerate(b.contents):
             p = b.panels[cg.panel]
-            box = discretize(rounded_rect(cg.x, cg.y, cg.w, cg.h, 3.18), 15)
+            box = discretize(rounded_rect(cg.x, cg.y + content_shift.get(ci, 0.0), cg.w, cg.h, 3.18), 15)
             z0, z1 = ((-p.t - cg.s, -p.t) if cg.under else (cg.z0 + 0.05, cg.z0 + cg.s))
             _slab(mesh, box, mats[cg.panel], z0, z1, (0.20, 0.33, 0.55), CARD_TOP, CARD_SIDE, (0.93, 0.93, 0.9))
     return mesh
@@ -383,9 +409,9 @@ def _noise_tex(n=256, seed=7):
 
 # --- çizim -------------------------------------------------------------------------------
 def render(b: Built, path: str | None = None, fold=1.0, az=-35.0, el=28.0, size=(1200, 900), bg=None,
-           ss=2, show_contents=True, margin=0.1, shadow=True, flip=False) -> Image.Image:
-    """flip=True: ürünü ters çevirip arka yüzünü gösterir (ışık yine üstten)."""
-    mesh = build_mesh(b, fold, show_contents)
+           ss=2, show_contents=True, margin=0.1, shadow=True, flip=False, pull: float = 0.0) -> Image.Image:
+    """flip=True: ürünü ters çevirip arka yüzünü gösterir (ışık yine üstten). pull: çekme şeridi (0..1)."""
+    mesh = build_mesh(b, fold, show_contents, pull=pull)
     P = np.stack(mesh.P)
     Nn = np.stack(mesh.N)
     if flip:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+from .checks import pull_strip_data
 from .engine import Built
 
 
@@ -42,7 +43,8 @@ def scene_json(b: Built) -> dict:
                 for c in b.contents]
     return {"title": b.design.ad, "color": b.design.renk or "#9a5a2e", "crazy": b.design.malzeme == "crazy_horse",
             "nodes": nodes, "hw": hw, "contents": contents,
-            "steps": sorted({n["order"] for n in nodes if n["order"]})}
+            "steps": sorted({n["order"] for n in nodes if n["order"]}),
+            "pulls": [{k: d[k] for k in ("child", "base", "content", "lift")} for d in pull_strip_data(b)]}
 
 
 HTML = r"""<!doctype html>
@@ -64,6 +66,7 @@ HTML = r"""<!doctype html>
 <h1>__TITLE__</h1><canvas id="c"></canvas>
 <div class="ui"><span>Açık</span><input id="f" type="range" min="0" max="1" step="0.001" value="1"><span>Bitmiş</span>
 <button id="play">▶ Katla</button><span id="steps"></span>
+<span id="pullui" style="display:none"><span>Şeridi çek</span><input id="pull" type="range" min="0" max="1" step="0.001" value="0"><button id="pullplay">▶ Çek</button></span>
 <label><input id="cards" type="checkbox" checked> kartlar</label>
 <div class="hint">Sürükle: döndür · tekerlek: yakınlaştır · sağ tık: kaydır · adımlar montaj sırasını oynatır.</div></div>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
@@ -140,6 +143,10 @@ function dome(r, h){ const pts=[]; for(let i=0;i<=12;i++){ const a=i/12*Math.PI/
 for (const s of S.hw){ const m = new THREE.Mesh(dome(s.r, s.h), metal); m.castShadow = true; const t = byId[s.panel].t;
   m.position.set(s.xy[0], s.xy[1], s.side>0 ? 0 : -t); if (s.side<0) m.scale.z = -1; groups[s.panel].add(m); }
 const contentMeshes = [];
+const fillers = {};
+for (const pl of S.pulls){ const n = byId[pl.child]; const w = n.hx[1]-n.hx[0];
+  const g = new THREE.BoxGeometry(w, 1, n.t); g.translate((n.hx[0]+n.hx[1])/2, 0.5, -n.t/2);
+  const m = new THREE.Mesh(g, leather); m.castShadow = m.receiveShadow = true; m.visible = false; groups[pl.child].add(m); fillers[pl.child] = m; }
 for (const c of S.contents){
   const t = byId[c.panel].t; const z0 = c.under ? -t - c.s : c.z0 + 0.05, z1 = c.under ? -t : c.z0 + c.s;
   const r=3.18, x=c.x, y=c.y, w=c.w, h=c.h; const sh=new THREE.Shape();
@@ -164,14 +171,21 @@ function compute(fold){
     }
     return mats[id] = m;
   };
-  for (const n of S.nodes){ const g = groups[n.id]; g.matrix.copy(get(n.id)); g.matrixWorldNeedsUpdate = true; }
+  const p = +document.getElementById('pull').value, shift = {}, bshift = {};
+  contentMeshes.forEach(m=>m.position.y=0);
+  for (const pl of S.pulls){ const dl = pl.lift*p, v = new THREE.Vector3(0,1,0).transformDirection(get(pl.base));
+    shift[pl.child] = v.clone().multiplyScalar(2*dl); bshift[pl.child] = v.clone().multiplyScalar(dl);
+    if (contentMeshes[pl.content]) contentMeshes[pl.content].position.y = dl;
+    const fm = fillers[pl.child]; fm.visible = dl > 0.01; fm.position.y = -dl; fm.scale.y = Math.max(dl, 1e-3); }
+  for (const n of S.nodes){ const g = groups[n.id]; g.matrix.copy(get(n.id));
+    if (shift[n.id]) g.matrix.premultiply(T(shift[n.id].x, shift[n.id].y, shift[n.id].z)); g.matrixWorldNeedsUpdate = true; }
   for (const id in bends){
     const n = byId[id], {mesh, segs} = bends[id], h = hinge[id]; const pos = mesh.geometry.attributes.position;
     for (let k=0;k<=segs;k++){ const a = h.a*k/segs, s=Math.sin(a), c=Math.cos(a);
       const pts = [[n.hx[0],0],[n.hx[1],0],[n.hx[0],-n.t],[n.hx[1],-n.t]];
       pts.forEach((p,j)=>{ const z0=p[1]; pos.setXYZ(k*4+j, p[0], -(z0-h.zh)*s, h.zh+(z0-h.zh)*c); }); }
     pos.needsUpdate = true; mesh.geometry.computeVertexNormals(); mesh.geometry.computeBoundingSphere();
-    mesh.matrix.copy(h.H); mesh.matrixWorldNeedsUpdate = true; mesh.visible = Math.abs(h.a) > 1e-3;
+    mesh.matrix.copy(h.H); if (bshift[id]) mesh.matrix.premultiply(T(bshift[id].x, bshift[id].y, bshift[id].z)); mesh.matrixWorldNeedsUpdate = true; mesh.visible = Math.abs(h.a) > 1e-3;
   }
 }
 const slider = document.getElementById('f'); let stepMode = null;
@@ -188,6 +202,12 @@ let anim=null;
 function play(){ cancelAnimationFrame(anim); const t0=performance.now(); const from=+slider.value>0.99?0:+slider.value;
   const tick=(t)=>{ const v=Math.min(1, from+(t-t0)/2400); slider.value=v; update(); if(v<1) anim=requestAnimationFrame(tick); }; anim=requestAnimationFrame(tick); }
 document.getElementById('play').onclick=play;
+const pullEl = document.getElementById('pull');
+if (S.pulls.length){ document.getElementById('pullui').style.display=''; }
+pullEl.oninput = update;
+let panim=null;
+document.getElementById('pullplay').onclick=()=>{ cancelAnimationFrame(panim); const t0=performance.now(), back=+pullEl.value>0.5;
+  const tick=(t)=>{ const k=Math.min(1,(t-t0)/1400); pullEl.value = back ? 1-k : k; update(); if(k<1) panim=requestAnimationFrame(tick); }; panim=requestAnimationFrame(tick); };
 document.getElementById('cards').onchange=(e)=>contentMeshes.forEach(m=>m.visible=e.target.checked);
 update();
 const box = new THREE.Box3().setFromObject(world); const ctr = box.getCenter(new THREE.Vector3()); const sz = box.getSize(new THREE.Vector3()).length();

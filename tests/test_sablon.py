@@ -600,3 +600,20 @@ def test_pull_strip_poking_out_of_body_is_caught():
         if part["id"] == "serit":
             part["montaj"]["y"] = "1"  # U kıvrımı alt körükten taşar
     assert "carpisma" in codes(d)
+
+
+def test_pull_strip_animation():
+    import json as _j
+    from sablon.checks import pull_strip_data
+    from sablon.render3d import build_mesh
+    from sablon.viewer import scene_json
+    from sablon.instructions import make
+    b = build(from_dict(_j.load(open("ornekler/cekme_seritli_kartlik.json", encoding="utf-8"))))
+    d = pull_strip_data(b)
+    assert len(d) == 1 and d[0]["lift"] > 15
+    assert scene_json(b)["pulls"][0]["child"] == d[0]["child"]
+    m0, m1 = build_mesh(b, 1.0, soft=False), build_mesh(b, 1.0, soft=False, pull=1.0)
+    assert len(m1.P) > len(m0.P)  # şerit uzantısı eklendi
+    top = lambda m: max(float(np.asarray(p)[:, 1].max()) for p in m.P)
+    assert top(m1) > top(m0) + 10
+    assert any("çekme şeridi" in s.title for s in make(b).steps)

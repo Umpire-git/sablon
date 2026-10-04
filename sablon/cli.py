@@ -245,6 +245,9 @@ def cmd_cikti(a):
                  "arka": render(b, fold=1.0, az=-35, el=30, flip=True, size=(1400, 1000), ss=1 if a.hizli else 2),
                  "yari_acik": render(b, fold=0.55, az=-30, el=40, size=(1400, 1000), ss=1 if a.hizli else 2),
                  "acinim": doc.images["flat"]}
+        from .checks import pull_strip_data
+        if pull_strip_data(b):
+            shots["cekilmis"] = render(b, fold=1.0, az=160, el=30, pull=1.0, size=(1400, 1000), ss=1 if a.hizli else 2)
         for k, im in shots.items():
             path = f"{base}_{k}.png"
             im.save(path)

@@ -401,18 +401,21 @@ def _covers(b: Built, cg) -> list[tuple[str, float]]:
     return res
 
 
-def _pull_strips(b: Built) -> list:
-    """Monte bir şerit kartların altından U çizip yukarı çıkıyorsa çekme mekanizması olarak değerlendirir."""
+def pull_strip_data(b: Built) -> list[dict]:
+    """Çekme şeritleri: monte bir şerit kartların altından U çizip tabana yatıyorsa.
+
+    Her biri için: içerik indeksi, taban paneli, şeridin dönüş kolu (child), kartların yükselmesi (lift),
+    tam çekişte görünen kart boyu ve şerit ucunun gövdeden taşması.
+    """
     res = []
-    for cg in b.contents:
+    for ci, cg in enumerate(b.contents):
         if cg.under:
             continue
         base = b.panels[cg.panel]
         inv = np.linalg.inv(b.matrix(base.id, 1.0))
 
         def to_base(pid, x, y):
-            v = inv @ b.matrix(pid, 1.0) @ np.array([x, y, 0.0, 1.0])
-            return v[:3]
+            return (inv @ b.matrix(pid, 1.0) @ np.array([x, y, 0.0, 1.0]))[:3]
 
         base_top = max(y for _, y in base.poly)
         for part_id, root in b.roots.items():
@@ -426,18 +429,24 @@ def _pull_strips(b: Built) -> list:
                 zs = [to_base(c.id, x, y)[2] for x, y in c.quad]
                 if max(abs(z) for z in zs) > 3 * c.t + 1:
                     continue  # tabana yatmıyor: çekme şeridi değil
-                anchors = [to_base(f["panel"], *f["xy"])[1] for f in b.fasteners if f["panel"] in (root,)]
+                anchors = [to_base(f["panel"], *f["xy"])[1] for f in b.fasteners if f["panel"] == root]
                 anchor = max(anchors) if anchors else max(to_base(root, x, y)[1] for x, y in rp.quad)
                 lift = max(0.0, anchor - 6 - cg.y)
-                visible = cg.y + cg.h + lift - base_top
-                tab = max(ys) - base_top
-                name = b.parts[part_id].ad or part_id
-                res.append(Finding("bilgi", "cekme", f"{name}: çekince kartlar ~{lift:.0f} mm yükselir; en üstte ~{visible:.0f} mm "
-                                                     f"görünür. Şeridin tutma ucu gövdeden {tab:.0f} mm taşar."))
-                if visible < 15:
-                    res.append(Finding("uyari", "cekme_az", f"{name}: çekince kartların yalnızca ~{visible:.0f} mm'si görünür; "
-                                                            "tutmak için ≥15 mm gerekir (perçini yukarı alın / şeridi uzatın)."))
-                if tab < 12:
-                    res.append(Finding("uyari", "cekme_ucu", f"{name}: şerit ucu gövdeden {tab:.0f} mm taşıyor; parmakla tutmak "
-                                                             "için ≥12 mm olmalı."))
+                res.append({"part": part_id, "name": b.parts[part_id].ad or part_id, "child": c.id, "base": base.id,
+                            "content": ci, "lift": float(lift), "visible": float(cg.y + cg.h + lift - base_top),
+                            "tab": float(max(ys) - base_top)})
+    return res
+
+
+def _pull_strips(b: Built) -> list:
+    res = []
+    for d in pull_strip_data(b):
+        res.append(Finding("bilgi", "cekme", f"{d['name']}: çekince kartlar ~{d['lift']:.0f} mm yükselir; en üstte "
+                                             f"~{d['visible']:.0f} mm görünür. Şeridin tutma ucu gövdeden {d['tab']:.0f} mm taşar."))
+        if d["visible"] < 15:
+            res.append(Finding("uyari", "cekme_az", f"{d['name']}: çekince kartların yalnızca ~{d['visible']:.0f} mm'si görünür; "
+                                                    "tutmak için ≥15 mm gerekir (perçini yukarı alın / şeridi uzatın)."))
+        if d["tab"] < 12:
+            res.append(Finding("uyari", "cekme_ucu", f"{d['name']}: şerit ucu gövdeden {d['tab']:.0f} mm taşıyor; parmakla "
+                                                     "tutmak için ≥12 mm olmalı."))
     return res
