@@ -560,6 +560,19 @@ def test_gemini_quota_falls_back_to_flash(monkeypatch):
     assert [c["model"] for c in fg.calls] == ["gemini-3.1-pro", "gemini-3.8-flash"]
 
 
+def test_gemini_billing_error_is_explained(monkeypatch):
+    from google.genai import errors
+    from sablon import gemini_models as GM
+    monkeypatch.setattr(ai, "GEMINI_MODEL", "")
+    monkeypatch.setattr(GM, "pick_text", lambda c: "gemini-3.1-pro")
+    err = errors.ClientError(402, {"error": {"code": 402, "status": "RESOURCE_EXHAUSTED",
+                                             "message": "Your prepayment credits are depleted."}})
+    fg = FakeGemini(err)
+    with pytest.raises(ai.AIError) as e:
+        ai._ask("x", ai.Fikirler, fg)
+    assert "kredisi bitmiş" in str(e.value) and len(fg.calls) == 1
+
+
 def test_cli_fikir_reports_and_saves_rejected(tmp_path, monkeypatch, capsys):
     hopeless = copy.deepcopy(design("dikissiz_kilitli_kartlik"))
     for pn in hopeless.parcalar[0].paneller:

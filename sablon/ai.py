@@ -226,6 +226,14 @@ def _ask_gemini(content, schema, client, max_tokens, pdf):
             code = getattr(e, "code", None)
             if code in (401, 403):
                 raise AIError("Gemini anahtarı geçersiz veya yetkisiz (GEMINI_API_KEY).") from e
+            msg = str(e).lower()
+            if code == 402 or (code != 429 and ("credits are depleted" in msg or "billing" in msg)):
+                raise AIError(
+                    "Gemini hesabınızın ön ödemeli kredisi bitmiş (402). Bu bir program hatası değil, faturalandırma "
+                    "durumu.\n  Çözüm: https://aistudio.google.com → Projeler → Billing kısmından kredi yükleyin,\n"
+                    "  ya da faturalandırma AÇIK OLMAYAN yeni bir projede ücretsiz anahtar oluşturup GEMINI_API_KEY'i onunla "
+                    "değiştirin (ücretsiz kota: flash modeller, dakikalık sınır düşük),\n"
+                    "  ya da ANTHROPIC_API_KEY tanımlayıp --ai claude ile çalıştırın.") from e
             if code == 429:
                 try:
                     alt = GM.pick_fallback(client, model)
