@@ -204,10 +204,12 @@ def _ask_gemini(content, schema, client, max_tokens, pdf):
     js = schema.model_json_schema()
     attempts = [
         types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens,
-                                    response_mime_type="application/json", response_json_schema=js),
+                                    response_mime_type="application/json", response_json_schema=js,
+                                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)),
         types.GenerateContentConfig(system_instruction=system + "\n\nYanıtı YALNIZCA şu JSON şemasına uyan tek bir "
                                     "JSON nesnesi olarak ver:\n" + json.dumps(js, ensure_ascii=False),
-                                    max_output_tokens=max_tokens, response_mime_type="application/json"),
+                                    max_output_tokens=max_tokens, response_mime_type="application/json",
+                                    automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True)),
     ]
     from . import gemini_models as GM
     try:
