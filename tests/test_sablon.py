@@ -325,3 +325,27 @@ def test_revise_returns_diffable_design():
     r, out, findings = ai.revise(d, "biraz daha ince olsun", client=FakeClient(rev))
     assert "~ değişken kart_adet: 5 → 4" in P.diff(d, out)
     assert not [f for f in findings if f.level == "hata"]
+
+
+# --- Blender fotoğraf sahnesi ------------------------------------------------------------
+def test_photo_scene_data_matches_model():
+    from sablon.foto import scene_data
+    b = build(design("kapakli_citcitli_kartlik"))
+    d = scene_data(b, size=(400, 300))
+    n = len(d["M"])
+    assert n > 100 and len(d["P"]) == len(d["N"]) == n * 9 and len(d["UV"]) == n * 6
+    assert d["crazy"] is True and all(0 <= c <= 1 for c in d["base"])
+    w, h, _ = b.finished_size()
+    ext = np.array(d["P"]).reshape(-1, 3)
+    span = sorted(ext.max(0) - ext.min(0), reverse=True)
+    assert span[0] == pytest.approx(w, abs=3)  # aynı geometri
+    eye = np.array(d["eye"]); ctr = np.array(d["ctr"])
+    assert np.linalg.norm(eye - ctr) > d["radius"] * 2
+
+
+def test_photo_without_blender_reports_clearly(monkeypatch, tmp_path):
+    from sablon import foto
+    monkeypatch.setattr(foto, "_has_bpy", lambda: False)
+    monkeypatch.setattr(foto, "find_blender", lambda: None)
+    with pytest.raises(foto.BlenderYok):
+        foto.render_photo({"x": 1}, str(tmp_path / "a.png"))

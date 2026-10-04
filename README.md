@@ -30,12 +30,35 @@ geometriyi ise motor **hesaplar ve fiziksel olarak sınar**. Hatalı tasarım (b
 geçen paneller, sığmayan kartlar, boşluğa düşen çıtçıt, tutmayan kilit, katlanma sırası imkânsız
 ürün) çıktı üretilmeden yakalanır ve Claude'a onarım için geri verilir.
 
-## Kurulum
+## Kurulum (Windows, adım adım)
 
-```bash
-pip install -e ".[dev]"
-export ANTHROPIC_API_KEY=...      # fikir / duzelt / incele / ogren komutları için
-```
+1. **Python** kurun: <https://www.python.org/downloads/> → 3.11 veya 3.12. Kurulumun ilk ekranında
+   **"Add python.exe to PATH"** kutusunu işaretleyin.
+2. **Blender** kurun (fotogerçekçi görseller için, ücretsiz): <https://www.blender.org/download/> → normal kurulum.
+   Araç Blender'ı kendisi bulur; ayrıca açmanız gerekmez.
+3. **Bu projeyi indirin**: GitHub'da depo sayfasında dalı seçip **Code → Download ZIP**, ZIP'i bir klasöre açın.
+4. Klasördeki **`kurulum.bat`** dosyasına çift tıklayın (bir kez).
+5. **`deneme.bat`** dosyasına çift tıklayın: örnek kartlığın kalıbı, PDF kitapçığı, 3B dosyası ve Blender
+   fotoğrafları `deneme_cikti` klasörüne üretilir ve klasör açılır.
+
+Claude ile fikir üretmek / düzeltmek için ayrıca bir Anthropic API anahtarı gerekir
+(<https://console.anthropic.com/>): komut penceresinde `setx ANTHROPIC_API_KEY "anahtarınız"` yazıp
+pencereyi kapatıp yeniden açın.
+
+Mac/Linux: `pip install -e ".[dev]"`, Blender'ı kurun (veya Python 3.11'de `pip install bpy`).
+
+### Fotogerçekçi görseller ve bilgisayar gücü
+
+`sablon cikti proje.json --foto hizli` veya `--foto kaliteli`:
+
+| Ayar | Motor | Süre (yaklaşık, görsel başına) | Ne için |
+|---|---|---|---|
+| `hizli` | Eevee (ekran kartıyla), yoksa Cycles 24 örnek | saniyeler – yarım dakika | Ön izleme |
+| `kaliteli` | Cycles 64 örnek + gürültü giderici | 1–3 dk (i5 + MX ekran kartı sınıfı) | Etsy görselleri |
+
+Görseller: `_foto_urun` (önden), `_foto_arka` (ters çevrilmiş), `_foto_yari_acik` (katlanırken), `_foto_acinim`.
+Geometri motorun modelinden birebir alınır; Blender yalnızca ışık ve malzemeyi gerçekçi hesaplar, yani
+görseldeki ürün kalıptan çıkan üründür. Daha yüksek kalite için `SABLON_ORNEK=128` ortam değişkeni verilebilir.
 
 ## Kullanım
 

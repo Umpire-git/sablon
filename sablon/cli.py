@@ -227,6 +227,14 @@ def cmd_cikti(a):
             path = f"{base}_{k}.png"
             im.save(path)
             made.append(path)
+    if a.foto:
+        from .foto import BlenderYok, render_photos
+        print(f"Blender ile fotogerçekçi görseller ({a.foto}) hazırlanıyor; görsel başına "
+              f"{'birkaç saniye–yarım dakika' if a.foto == 'hizli' else '1–3 dakika'} sürebilir...")
+        try:
+            made += render_photos(doc.built, base, a.foto)
+        except BlenderYok as e:
+            print(f"  ⚠ {e}")
     print("Oluşturulan dosyalar:")
     for m in made:
         print(f"  {m}")
@@ -282,6 +290,7 @@ def main(argv: list[str] | None = None):
     s.add_argument("proje"); s.add_argument("-d", "--klasor", default="cikti"); s.add_argument("--ad")
     s.add_argument("--bicim", default="a4,letter,full,svg,dxf,3b,gorsel")
     s.add_argument("--hizli", action="store_true", help="Düşük çözünürlüklü görseller (hızlı)")
+    s.add_argument("--foto", choices=["hizli", "kaliteli"], help="Blender ile fotogerçekçi ürün görselleri")
     s.add_argument("--zorla", action="store_true")
     s.set_defaults(f=cmd_cikti)
 

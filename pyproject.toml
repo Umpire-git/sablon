@@ -12,6 +12,7 @@ dependencies = ["reportlab>=4.0", "anthropic>=1.0", "pydantic>=2.0", "numpy>=1.2
 
 [project.optional-dependencies]
 dev = ["pytest", "pypdf"]
+foto = ["bpy"]  # yalnızca Python 3.11; yoksa normal Blender programı kullanılır
 
 [project.scripts]
 sablon = "sablon.cli:main"
