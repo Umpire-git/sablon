@@ -448,3 +448,16 @@ def test_calibration_pdf(tmp_path):
     write_pdf(str(out), "crazy_horse", 1.6)
     text = "".join(p.extract_text() for p in PdfReader(str(out)).pages)
     assert "Katlama testi" in text and "sablon kalibre crazy_horse" in text
+
+
+# --- sağlamlık: Claude'un üretebileceği bozuk tasarımlar motoru çökertmemeli -------------------
+def test_bad_expressions_and_sizes_are_findings_not_crashes():
+    d = load("vidali_kartlik")
+    d["degiskenler"].append({"ad": "zz", "deger": "1/0", "aciklama": ""})
+    assert "ifade" in codes(d)
+    d = load("vidali_kartlik")
+    d["parcalar"][0]["paneller"][0]["genislik"] = "1e6"
+    assert "olcu" in codes(d)
+    d = load("vidali_kartlik")
+    d["parcalar"][0]["paneller"][1]["ebeveyn"] = "alt_koruk"  # kendine bağlı
+    assert codes(d)  # çökmeden bulgu döner

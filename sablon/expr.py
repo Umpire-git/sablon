@@ -59,7 +59,14 @@ def evaluate(expr, env: dict[str, float]) -> float:
             return float(_FUN[n.func.id](*[ev(a) for a in n.args]))
         raise ExprError(f"'{s}' içinde izin verilmeyen ifade")
 
-    v = ev(tree)
+    try:
+        v = ev(tree)
+    except ZeroDivisionError as e:
+        raise ExprError(f"'{s}' sıfıra bölme içeriyor") from e
+    except (OverflowError, ValueError, TypeError) as e:
+        if isinstance(e, ExprError):
+            raise
+        raise ExprError(f"'{s}' hesaplanamadı ({e})") from e
     if not math.isfinite(v):
         raise ExprError(f"'{s}' sonlu bir sayı vermiyor")
     return v

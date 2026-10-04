@@ -494,6 +494,9 @@ def build(design: Tasarim) -> Built:
                 F.append(Finding("hata", "ebeveyn", f"{p.id}: ebeveyn '{p.ebeveyn}' bu parçada yok."))
             w = num(p.genislik, f"{p.id}.genislik")
             h = num(p.yukseklik, f"{p.id}.yukseklik")
+            if w > 600 or h > 600:
+                F.append(Finding("hata", "olcu", f"{p.id}: {w:.0f} × {h:.0f} mm bir deri ürün paneli için gerçek dışı (≤ 600 mm)."))
+                w, h = min(w, 600.0), min(h, 600.0)
             if w <= 0 or h <= 0:
                 F.append(Finding("hata", "olcu", f"{p.id}: genişlik/yükseklik pozitif olmalı ({w:.1f} × {h:.1f})."))
                 w, h = max(w, 1.0), max(h, 1.0)

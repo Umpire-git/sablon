@@ -50,6 +50,7 @@ def _samples(p, step=2.5) -> np.ndarray:
     """Panel levhasının iç noktaları (yerel; orta düzlem ve yüzlere yakın iki düzlem)."""
     poly = np.array(p.poly)
     (x0, y0), (x1, y1) = poly.min(0), poly.max(0)
+    step = max(step, (x1 - x0) / 120, (y1 - y0) / 120)  # örnek sayısını sınırla
     gx, gy = np.meshgrid(np.arange(x0 + step / 2, x1, step), np.arange(y0 + step / 2, y1, step))
     pts = np.c_[gx.ravel(), gy.ravel()]
     if not len(pts):
