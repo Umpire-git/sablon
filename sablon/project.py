@@ -84,7 +84,7 @@ def set_value(design: Tasarim, key: str, value: str) -> str:
         if v.ad == key:
             v.deger = value
             return f"değişken {key} = {value}"
-    if key in ("kalinlik", "malzeme", "renk", "dikis_araligi", "kenar_payi", "ad"):
+    if key in ("kalinlik", "malzeme", "renk", "ad"):
         setattr(d, key, value)
         return f"{key} = {value}"
     raise KeyError(f"'{key}' bulunamadı (değişken, panel.alan veya tasarım alanı olmalı)")

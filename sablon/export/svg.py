@@ -8,7 +8,7 @@ from ..pattern import Kind, Pattern, Piece
 
 COLORS = {
     Kind.CUT: ("#000000", None), Kind.SLIT: ("#000000", None), Kind.HOLE: ("#000000", None),
-    Kind.FOLD: ("#1f5fbf", "3 1.5"), Kind.STITCH: ("#c0392b", None), Kind.GUIDE: ("#c0392b", "1 1"),
+    Kind.FOLD: ("#1f5fbf", "3 1.5"), Kind.GUIDE: ("#c0392b", "1 1"),
     Kind.GRAIN: ("#555555", None),
 }
 
@@ -45,7 +45,7 @@ def write_svg(title: str, pieces: list[Piece], path: str) -> None:
             continue
         color, dash = COLORS[kind]
         d = f' stroke-dasharray="{dash}"' if dash else ""
-        fill = color if kind == Kind.STITCH else "none"
+        fill = "none"
         body.append(f'<g id="{kind.value}" inkscape:label="{kind.value}" inkscape:groupmode="layer" '
                     f'stroke="{color}" stroke-width="0.25" fill="{fill}"{d}>' + "".join(items) + "</g>")
     body.append('<g id="text" font-family="Helvetica, Arial, sans-serif" fill="#444">' + "".join(texts) + "</g>")

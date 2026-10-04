@@ -1,94 +1,72 @@
-# Tasarım dili (DSL) kılavuzu
+# Tasarım dili (DSL) kılavuzu — DİKİŞSİZ DERİ ÜRÜNLER
 
 Ürünü JSON tasarım olarak tanımlarsın; motor bunu mm hassasiyetinde açınım kalıbına, 3B modele,
-kontrollere ve yapım talimatına çevirir. Geometri çizmezsin — paneller, menteşeler ve özellikler
-tanımlarsın. Tüm ölçüler mm, açılar derece. Her alan zorunludur; kullanılmayan metin alanına "" ,
-listeye [] yaz.
+çarpışma/montaj simülasyonuna, kontrollere ve yapım talimatına çevirir. Geometri çizmezsin — paneller,
+menteşeler ve özellikler tanımlarsın. Tüm ölçüler mm, açılar derece. Her alan zorunludur; kullanılmayan
+metin alanına "", listeye [] yaz.
+
+TÜM ÜRÜNLER DİKİŞSİZDİR. Dikiş ve yapıştırıcı yoktur. Birleştirme yalnızca şunlarla yapılır:
+katlama, dil-yarık kilidi (kilit_yarigi + yariktan_gecer kafa), çıtçıt, çift başlı perçin, şikago vidası,
+içeriğin geçirildiği yarıklar. Malzeme yalnızca deridir: vaketa veya crazy_horse.
 
 ## Değişkenler ve ifadeler
-- Ölçü alanları sayı ya da ifade içeren metindir: "kart_g + 2*bosluk + t".
-- Hazır değişkenler: t (tasarım kalınlığı), kart_g = 85.6, kart_y = 53.98, kart_k = 0.76 (tek kart kalınlığı).
-- `degiskenler` sırayla hesaplanır; önceki değişkenleri kullanabilir. Fonksiyonlar: min, max, round, abs,
-  sqrt, ceil, floor, sin/cos/tan (derece).
-- Anahtar ölçüleri (kart adedi, boşluk, yığın kalınlığı, ana genişlik/yükseklik) değişkene bağla ki
-  "6 kartlık yap" gibi düzeltmeler tüm bağlı ölçülere yayılsın.
+- Ölçü alanları sayı ya da ifade içeren metindir: "kart_g + 2*bosluk".
+- Hazır değişkenler: t (deri kalınlığı), kart_g = 85.6, kart_y = 53.98, kart_k = 0.76 (tek kart kalınlığı).
+- `degiskenler` sırayla hesaplanır. Fonksiyonlar: min, max, round, abs, sqrt, ceil, floor, sin/cos/tan (derece).
+- Anahtar ölçüleri (kart adedi, yığın kalınlığı S, genişlik W, yükseklikler) değişkene bağla ki düzeltmeler yayılsın.
 
 ## Parça ve panel
-- Bir `parca` tek deriden kesilen bir parçadır; panellerden oluşan bir ağaçtır. Tam olarak bir kök panel
-  (ebeveyn "") olur.
-- Panel = taban dikdörtgeni: `genislik` (x) × `yukseklik` (y).
-- Kök panel yerel koordinatı: sol alt (0,0), x sağa, y yukarı. Çizimde görünen ve +z'ye bakan yüz
-  derinin İÇ (süet) yüzüdür.
-- Kenar adları her panelde: alt (y=0), ust (y=yukseklik), sol (x=0), sag (x=genislik).
-- Çocuk panel, ebeveynin bir kenarına (`kenar`) menteşeyle bağlanır:
-  - Çocuğun `alt` kenarı menteşedir; `ust` serbest ucudur; `genislik` menteşe boyuncadır,
-    `yukseklik` menteşeden dışa doğrudur.
-  - Çocuğun x ekseni: menteşede durup dışa (serbest uca) bakarken soldan sağa artar. Yani çocuğun `sol`u
-    o bakışta solda kalır.
-  - Çocuk, kenarın ortasına ortalanır; `ofset` ebeveynin +x (yatay kenarlar) veya +y (dikey kenarlar)
-    yönünde kaydırır.
-  - Alt-olmayan bir çocuğun `alt` kenarı zaten menteşe olduğundan oraya başka panel bağlanamaz.
-  - Çocuk, kenardan daha geniş olabilir (ör. kilit dili kafası boyundan geniş); örtüşmeyen kısım kesim olur.
-- `aci`: bitmiş üründeki kat açısı. + vadi (iç/süet yüzler birbirine yaklaşır), − dağ. 180 = ebeveynin
-  üzerine yatar, 90 = duvar olur, 0 = düz devam (kat yok).
-- Panel ölçüleri BİTMİŞ ölçülerdir (iç yüzde kat çizgisinden). Motor kat payını
-  (radyan(|açı|)·t/2) kendisi ekler.
-- `kat_sirasi`: montajda katlanma sırası (1,2,3...). Aynı anda katlananlar aynı numara.
-- `koseler`: sol_alt, sag_alt, sag_ust, sol_ust yarıçapları. Menteşe tarafındaki köşeler (sol_alt, sag_alt)
-  çocuk panellerde 0 olmalı.
-- `daralma`: serbest uçta her iki yandan içe çekilme (yamuk). Daralan panelin yanına panel bağlanamaz.
-- Profiller (yalnızca ust, sol, sag; panel bağlı kenarda profil olmaz):
-  - duz; kavis (dışa bombe, olcu = sehim); sivri (zarf ucu, olcu = uç derinliği);
-    oyuk (ortada içe yarım daire başparmak oyuğu, olcu = yarıçap); yuvarlak (tam yarım daire uç).
-- Açınımda (düz serilmiş hâlde) bir parçanın panelleri ÜST ÜSTE BİNEMEZ. Binecekse ayrı parça yap
-  (monte parça).
+- Bir `parca` tek deriden kesilen bir parçadır; panellerden oluşan bir ağaçtır, tam olarak bir kök panel olur.
+- Kök panel yerel koordinatı: sol alt (0,0), x sağa, y yukarı. +z'ye bakan yüz derinin İÇ (süet) yüzüdür.
+- Kenar adları: alt (y=0), ust (y=yukseklik), sol (x=0), sag (x=genislik).
+- Çocuk panel ebeveynin bir kenarına menteşeyle bağlanır: çocuğun `alt`ı menteşedir, `ust`u serbest uçtur,
+  `genislik` menteşe boyunca, `yukseklik` dışa doğrudur. Çocuğun x'i: menteşede durup serbest uca bakarken
+  soldan sağa artar. Çocuk kenarın ortasına ortalanır; `ofset` ebeveynin +x (yatay kenar) / +y (dikey kenar)
+  yönünde kaydırır. Çocuk kenardan geniş olabilir (kilit kafası).
+- Çocuğun `alt`ı zaten menteşedir; oraya başka panel bağlanamaz.
+- `aci`: + vadi (süet yüzler birbirine yaklaşır), − dağ. 180 = ebeveynin üzerine yatar, 90 = duvar, 0 = düz devam.
+- Deri keskin katlanmaz: motor her kata iç yarıçapı t/2 olan kıvrım ve kat payı ekler. Panel ölçüleri bitmiş
+  ölçülerdir. İki 90° kat arasındaki körük/duvar, kıvrımlar nedeniyle yaklaşık t kadar ek hacim kazanır.
+- `kat_sirasi`: montajda katlanma sırası (1,2,3…). Aynı anda katlananlar aynı numara. Duvar ve ona bağlı dil
+  boynu genellikle AYNI adımda katlanır (yoksa dil sallanır). Kilit kafasının kat sırası "kilitleme" adımıdır.
+- `koseler`: menteşe tarafı köşeleri (sol_alt, sag_alt) çocuk panellerde 0.
+- `daralma`: serbest uçta iki yandan içe çekilme (yamuk); daralan panelin yanına panel bağlanamaz.
+- Profiller (ust, sol, sag; panel bağlı kenarda olmaz): duz; kavis (dışa bombe, olcu = sehim);
+  sivri (zarf ucu, olcu = derinlik); oyuk (ortada başparmak oyuğu, olcu = yarıçap); yuvarlak (yarım daire uç).
+- Açınımda bir parçanın panelleri ÜST ÜSTE BİNEMEZ.
 
-## Kalınlık ve hacim (çok önemli)
-- 180° kat, kalınlığı ancak iki deri kadar olan bir "sandviç" için uygundur (ör. yanları dikilen cep).
-- Arasına içerik (kart yığını S = adet·kart_k) girecek bir kapak/gövde için SIRT/KÖRÜK paneli kullan:
-  sırt yüksekliği ≈ S + 2t (+1), iki tane 90° kat.
-- Dikişli düz cep için çevre kuralı: dikişler arası iç genişlik ≥ içerik genişliği + yığın kalınlığı + 1 mm.
-  Yani gövde genişliği ≈ kart_g + S + 2 + 2·kenar_payi.
-- Yan duvarlı (körüklü) yapılarda duvar yüksekliği ≥ S.
+## Dikişsiz bağlantılar
+### Dil-yarık kilidi (en güçlü dikişsiz bağlantı)
+- Bir duvarın serbest ucuna bağlı DİL BOYNU paneli (genişlik ≥ max(8, 5t), aci 90 → hedef panelin dış yüzüne yatar),
+  boynun ucuna bağlı KAFA paneli: aci "0", `yariktan_gecer`: true, genislik = boyun + t + (3–5) (yarıktan ≥2 mm,
+  crazy horse'ta ≥3 mm geniş), yukseklik 8–10, uç köşeleri yuvarlak.
+- Boyun panelinde `kilit_yarigi`: x "-t/2", y = boyun yüksekliği, genislik "boyun + t", aci "0", hedefler [hedef panel].
+  Yarık yalnızca hedef panelde kesilir; hedefte kenara ≥ max(5, 3t) mm uzak olmalı.
+- Duvar yüksekliği: dilin hedef panelin dış yüzüne oturması için duvar = (iç hacim) + t.
+### Çıtçıt
+- Kaynak (kapak) panelde merkez (x,y), boyut mini|L20|L24. Karşılığı katlanınca otomatik bulunur.
+- Kapak, karşı panelin dış yüzüne TEMAS etmeli (boşluk ≤ 2.5 mm): kapak sırtı yüksekliği ≈ karşı panelin
+  dış yüzünün yüksekliği (ör. iç hacim + t). Şapka kenara ≥ yarıçap + 2 mm uzak; kat çizgisine yakın olmasın.
+### Perçin / şikago vidası
+- Bir panelde (x,y) + hedefler: katlanınca ÜST ÜSTE GELEN ve BİRBİRİNE DEĞEN katları birleştirir.
+  Katlar arasında boşluk olmamalı (motor kontrol eder). Toplam kalınlık: perçin 2–6 mm, vida 3–7 mm.
+  Kenara ≥ baş yarıçapı + 1.5 mm (perçin baş Ø8, vida baş Ø10).
+### Yarıklar
+- `yarik`: kartın ya da bir şeridin geçtiği düz kesik; uçlarına motor yırtılma önleyici delik koyar.
+- `oval_delik`: kayış/şerit yuvası (genislik × yukseklik). Şerit/kapak dilini oval yuvaya geçirme de bir kilittir.
 
-## Monte parça (cep, astar, takviye)
-- `montaj.ana_panel`: üzerine monte edildiği panel; `x`,`y`: bu parçanın kök panelinin sol-alt köşesinin ana
-  panel yerelindeki konumu (bitmiş ölçülerle); `yuz`: "ic" veya "dis"; `dikis_kenarlari`: ana panele dikilen
-  kenarlar (ör. ["sol","alt","sag"]). Motor dikiş deliklerini HER İKİ parçaya birebir aynı konumda koyar.
-- Aynı yüze sırayla monte edilen parçalar üst üste biner (kademeli cepler: önce arka cep, sonra öndeki).
-
-## Özellikler (`ozellikler`)
-Ortak alanlar: tip, panel, x, y, genislik, yukseklik, aci, boyut, kenarlar, kenar_payi, hedefler, etiket.
-Kullanılmayanlar "" veya [].
-- citcit: kaynak panelde merkez (x,y), boyut mini|L20|L24. Karşı parça KATLANINCA otomatik bulunur
-  (hedefler boşsa en yakın paralel panel). Şapka kenara ≥ şapka yarıçapı + 2 mm uzak olmalı; kapak, karşı
-  panelin üzerine en az ~20 mm binmeli.
-- miknatis: citcit gibi, boyut = çap (ör. "12"). İki kat arasına gizlenir.
-- dikis: `kenarlar` boyunca, kenardan `kenar_payi` içeride. Katlanınca üst üste gelen panellere aynı
-  delikleri koymak için `hedefler` (ör. alttan katlanan ön cebin yanları → hedefler ["arka"]).
-- dikis_cizgisi: (x,y)'den `aci` yönünde `genislik` uzunluğunda düz dikiş (ör. cebi ikiye bölen dikiş).
-- kilit_yarigi: dikişsiz kilit. Kaynak panelde (genelde dil boynu) tanımlanır; yarık yalnızca katlanınca
-  denk geldiği HEDEF panelde kesilir. (x,y) başlangıç, `genislik` = boyun + t, `aci` 0 (x yönü).
-  Kilit kafası (boynun ucuna bağlı, aci 0, genişliği boyun + 5) yarıktan ≥ 2 mm geniş olmalı.
-- yarik: panelde düz kesik (uçlarına otomatik yırtılma önleyici delik).
-- percin / delik: (x,y), boyut = çap.
-- oval_delik: kayış/kemer yuvası (genislik × yukseklik, uçları yuvarlak). pencere: köşesi yuvarlak iç kesim.
-- logo_alani: damga/gravür kılavuz dikdörtgeni.
+## Monte parça
+- Ayrı kesilen parça, başka bir panele (ana_panel, x, y, yuz ic/dis) yerleştirilir ve PERÇİN/VİDA/ÇITÇIT ile en az
+  iki noktadan bağlanır (motor bağlantısız parçayı hata sayar).
 
 ## İçerik (`icerikler`)
-Kontroller ve 3B için ürünün ne taşıdığını belirt: tip kart|banknot|ozel, adet, panel.
-- İçerik, `panel`in iç yüzüne oturur. Panel bir monte cebin kök paneliyse içerik o cebin İÇİNDEDİR.
-- x,y boşsa ortalanır/alta oturtulur.
+- tip kart|banknot|anahtar|ozel, adet, panel (içeriğin oturduğu panel). Motor içerik hacminin hiçbir panele
+  çarpmadığını, örtüldüğünü ve çıkarılabildiğini kontrol eder. Kart yığını S = adet·kart_k (+0.6 oynama).
 
-## Kontrol listesi (tasarlarken kendine sor)
-1. Kartlar sığıyor mu (çevre kuralı / duvar yüksekliği)? Dolu hâlde kapak kapanıyor mu (sırt)?
-2. Kart nasıl çıkıyor (cep ağzı alçak mı, başparmak oyuğu var mı)?
-3. Çıtçıt katlanınca bir panele denk geliyor mu, kenardan yeterince uzak mı?
-4. Açınımda paneller çakışıyor mu? Çakışıyorsa ayrı parça.
-5. Malzemeye uygun mu (crazy horse yumuşak: dikişsiz kilit zayıf; vaketa: kalıplanır, sert)?
-
-## Dikiş deliklerinin ortaklığı (endüstriyel kural)
-- Aynı kenara dikilen kademeli parçalarda (üst üste cepler) delikler gövdede ORTAK olmalı, yoksa yan
-  yana iki delik deriyi yırtar. Motor uç kenarlarda delikleri sabit zımba adımıyla dizer; bu yüzden
-  her monte parçanın yan dikiş boyu = yükseklik − kenar_payi − köşe_yarıçapı (köşe > kenar payıysa)
-  zımba adımının (p) katı olmalı. Pratik formül: yukseklik = r + e + n*p (r köşe, e kenar payı).
+## Motorun hata saydığı şeyler (bunları baştan önle)
+1. Katlı hâlde iki panelin birbirinin içinden geçmesi.
+2. Montaj sırasında (kat_sirasi ile katlanırken) bir panelin diğerinin içinden geçmek zorunda kalması.
+3. İçeriğin (kartlar) bir panele çarpması → körük/duvar/sırt S kadar olmalı.
+4. Çıtçıt / kilit yarığının katlanınca boşluğa düşmesi; kilit kafasının yarıktan dar olması.
+5. Perçin/vida katlarının birbirine değmemesi.
+6. Açınımda panellerin çakışması.

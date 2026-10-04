@@ -1,10 +1,10 @@
-"""DXF (R12, mm) — lazer / CNC / CAD. Katmanlar: CUT, SLIT, HOLE, FOLD, STITCH, GUIDE, GRAIN, TEXT."""
+"""DXF (R12, mm) — lazer / CNC / CAD. Katmanlar: CUT, SLIT, HOLE, FOLD, GUIDE, GRAIN, TEXT."""
 from __future__ import annotations
 
 from ..geometry import Arc, Circle, Line
 from ..pattern import Kind
 
-ACI = {Kind.CUT: 7, Kind.SLIT: 1, Kind.HOLE: 6, Kind.FOLD: 5, Kind.STITCH: 1, Kind.GUIDE: 3, Kind.GRAIN: 8}
+ACI = {Kind.CUT: 7, Kind.SLIT: 1, Kind.HOLE: 6, Kind.FOLD: 5, Kind.GUIDE: 3, Kind.GRAIN: 8}
 
 
 def _ascii(s: str) -> str:

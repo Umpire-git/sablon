@@ -37,8 +37,9 @@ def knowledge() -> str:
     from . import materials as M
     mats = "\n".join(f"- {m.key}: {m.ad}. {m.aciklama} Önerilen kalınlık {m.kalinlik_onerilen[0]}–{m.kalinlik_onerilen[1]} mm. "
                      f"Sert/kilit tutar: {'evet' if m.sert else 'hayır'}. Katlama: {m.katlama}" for m in M.MATERIALS.values())
-    snaps = ", ".join(f"{s.key} (şapka Ø{s.sapka_cap}, kavrama ~{s.kavrama} mm)" for s in M.SNAPS.values())
-    parts.append(f"# Malzemeler\n{mats}\n\n# Çıtçıt boyutları\n{snaps}")
+    snaps = ", ".join(f"{s.key} (şapka Ø{s.sapka_cap})" for s in M.SNAPS.values())
+    fast = ", ".join(f"{f.key}: {f.ad}, delik Ø{f.delik}, kavrama {f.kavrama[0]}–{f.kavrama[1]} mm" for f in M.FASTENERS.values())
+    parts.append(f"# Malzemeler\n{mats}\n\n# Çıtçıt boyutları\n{snaps}\n\n# Perçin / vida\n{fast}")
     ex = []
     for path in sorted(glob.glob(os.path.join(ROOT, "ornekler", "*.json"))):
         with open(path, encoding="utf-8") as f:
@@ -48,12 +49,12 @@ def knowledge() -> str:
     return "\n\n".join(parts)
 
 
-SYSTEM_HEAD = """Sen yaratıcı ve titiz bir deri ürün / ambalaj tasarımcısı ve endüstriyel kalıpçısın. Kullanıcı Etsy'de
-satılacak PDF kalıplar hazırlıyor. Tasarımlarını aşağıdaki tasarım dilinde (JSON) ifade edersin; parametrik motor
+SYSTEM_HEAD = """Sen yaratıcı ve titiz bir DİKİŞSİZ deri ürün tasarımcısı ve endüstriyel kalıpçısın. Kullanıcı Etsy'de
+satılacak, dikiş ve yapıştırıcı gerektirmeyen deri ürün PDF kalıpları hazırlıyor (vaketa veya crazy horse). Tasarımlarını aşağıdaki tasarım dilinde (JSON) ifade edersin; parametrik motor
 bunları milimetre hassasiyetinde kalıba, 3B modele, kontrollere ve yapım talimatına çevirir.
 
 Çalışma ilkelerin:
-- Ürünü kafanda gerçekten kur: kesim, katlama sırası, dikiş, içine kart girip çıkması, kapağın kapanması,
+- Ürünü kafanda gerçekten kur: kesim, katlama sırası, kilitlerin takılması, içine kart girip çıkması, kapağın kapanması,
   6 ay günlük kullanım. Her ölçünün fiziksel bir gerekçesi olsun.
 - Yaratıcı ol ama yapılabilir kal: her tasarım el aletleriyle üretilebilmeli.
 - Tutarlı kimlikler kullan; açınımda panel çakışmasından kaçın; kalınlık/hacim kurallarına uy.
@@ -202,8 +203,8 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
     rng.shuffle(axes)
     prompt = (
         f"# İstek\n{brief}\n\n"
-        f"{n} adet BİRBİRİNDEN BELİRGİN BİÇİMDE FARKLI tasarım üret. Farklılık yapısal olsun (parça sayısı, katlama "
-        "mimarisi, kapanma mekanizması, cep düzeni, açılım yönü), yalnızca ölçü değil. İsteğin zorunlu koşullarına "
+        f"{n} adet BİRBİRİNDEN BELİRGİN BİÇİMDE FARKLI, DİKİŞSİZ tasarım üret. Farklılık yapısal olsun (parça sayısı, "
+        "katlama mimarisi, kilit/kapanma mekanizması, bölme düzeni, açılım yönü), yalnızca ölçü değil. İsteğin zorunlu koşullarına "
         "(ör. 'kapaklı', 'çıtçıtlı') her tasarımda uy; geri kalanında özgür ol.\n"
         f"Her tasarım için farklı bir yön benimse: {', '.join(axes[:n])}.\n"
         f"Bu turun ilham kıvılcımları (en az birini cesurca kullan): {'; '.join(sparks)}.\n"
@@ -255,7 +256,7 @@ def review(design: Tasarim, client=None) -> Inceleme:
         f"# Tasarım\n```json\n{json.dumps(design.model_dump(), ensure_ascii=False)}\n```\n\n"
         "# Kural kontrolleri\n" + "\n".join(f"- [{f.level}] {f.message}" for f in findings) + _measures_txt(design) +
         f"\n\n# Üretilen yapım adımları\n{steps_txt}\n\n"
-        "Bu kalıbın gerçek ürüne dönüşümünü adım adım zihninde canlandır: kesim, katlama/dikiş, ilk kullanım, 6 ay "
+        "Bu kalıbın gerçek ürüne dönüşümünü adım adım zihninde canlandır: kesim, katlama, kilitleme, ilk kullanım, 6 ay "
         "günlük kullanım. Kural kontrollerinin yakalayamadığı kullanım zorluklarını, dayanıklılık risklerini ve yeni "
         "başlayan bir Etsy alıcısının talimatta takılabileceği yerleri bul; her biri için somut öneri ver."
     )
@@ -269,8 +270,8 @@ def learn_pdf(path: str, client=None) -> tuple[Bilgi, str]:
     content = [
         {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data}},
         {"type": "text", "text": (
-            "Bu, kullanıcının referans aldığı bir kalıp/talimat PDF'i. Genellenebilir bilgiyi çıkar: ölçü ve pay "
-            "kuralları, toleranslar, yapım sırası ve teknikler, tasarım motifleri (ilke olarak, birebir kopya değil), "
+            "Bu, kullanıcının referans aldığı bir dikişsiz deri kalıp/talimat PDF'i. Genellenebilir bilgiyi çıkar: ölçü ve "
+            "pay kuralları, kilit/yarık/kat toleransları, yapım sırası ve teknikler, tasarım motifleri (ilke olarak, birebir kopya değil), "
             "talimat anlatım üslubu ve sayfa düzeni. Başkasının tasarımını çoğaltmaya yarayacak birebir ölçü listesi "
             "çıkarma; kendi tasarımlarımızı geliştirmeye yarayacak dersleri yaz.")},
     ]

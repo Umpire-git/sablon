@@ -2,14 +2,15 @@
 
 Ana fikirler
 * Her panelin bir yerel çerçevesi var. Çocuk panel, ebeveyn kenarına menteşeyle bağlı.
-* Açınımda (flat) çocuk, menteşede kat payı kadar uzaklaştırılır:
-  kat_payi = radyan(|açı|) * t / 2  (iç yüzde sıfır yarıçaplı kıvrımda nötr eksen yayı).
-  Bu şerit kalıba eklenir, kat çizgisi şeridin ortasına çizilir. Panel ölçüleri bitmiş
-  (iç yüzde kat çizgisinden) ölçülerdir.
-* 3B'de çocuk, menteşe ekseni etrafında açı × katlama_oranı kadar döner; vadi katlar iç
-  yüzdeki eksen etrafında, dağ katlar dış yüzdeki eksen etrafında döner.
-* Çıtçıt, perçin, dikiş, kilit yarığı gibi "geçen" özellikler bitmiş (katlı) hâlde 3B'ye
-  taşınır, hedef panellere izdüşürülür: delikler katlanınca birebir üst üste gelir.
+* Deri keskin katlanmaz: iç yarıçapı r = BEND·t olan bir kıvrımla bükülür. Açınımda çocuk,
+  kıvrımın nötr ekseni uzunluğu kadar uzaklaştırılır:
+  kat_payi = radyan(|açı|) * (r + t/2). Bu şerit kalıba eklenir, kat çizgisi şeridin ortasına
+  çizilir. Panel ölçüleri bitmiş ölçülerdir (kıvrımın başladığı yerden).
+* 3B'de çocuk, iç yüzden r yukarıdaki (dağ katta dış yüzden r aşağıdaki) eksen etrafında
+  açı × katlama_oranı kadar döner; kıvrım bölgesi ayrıca eğrisel yüzey olarak çizilir.
+* Kilit yarığı, çıtçıt, perçin, vida gibi özellikler bitmiş (katlı) hâlde 3B'ye taşınır ve
+  hedef panellere izdüşürülür: delikler/yarıklar katlanınca birebir üst üste gelir.
+* `yariktan_gecer` panel (kilit kafası), hedef panelin öbür yüzüne geçirilir.
 """
 from __future__ import annotations
 
@@ -19,13 +20,14 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import materials as M
-from .design import Icerik, Ozellik, Panel, Parca, Tasarim
+from .design import Icerik, Panel, Parca, Tasarim
 from .expr import ExprError, evaluate
-from .geometry import (Affine2, Arc, Circle, Line, Segment, arc_from_3pts, discretize, dist_to_polygon_edge, fillet,
-                       line_intersection, path_length, point_in_polygon, points_along)
+from .geometry import (Affine2, Circle, Line, Segment, arc_from_3pts, discretize, dist_to_polygon_edge, fillet,
+                       point_in_polygon)
 from .pattern import Kind, Piece, Text
 
 EDGES = ("alt", "sag", "ust", "sol")
+BEND = 0.5  # kıvrım iç yarıçapı / kalınlık
 
 
 @dataclass
@@ -76,8 +78,12 @@ class PanelGeo:
     child_edges: set = field(default_factory=set)
     mount: object = None                 # Montaj (kök + monte parça)
     mount_z: float = 0.0
-    lift: float = 0.0                    # içindeki içerik nedeniyle kabarma (3B)
-    bulge: float = 0.0                   # 180° katlanıp içeriğin üstüne binen panelin kabarması
+    hinge_x: tuple = (0.0, 0.0)          # menteşe örtüşme aralığı (çocuk x'inde)
+    through: float = 0.0                 # yarıktan geçiş kayması (3B)
+
+    @property
+    def bend_r(self) -> float:
+        return BEND * self.t
 
     @property
     def edge_lines(self):
@@ -95,12 +101,13 @@ class ContentGeo:
     h: float
     s: float          # yığın kalınlığı
     under: bool       # True: monte cep panelinin altında (cep içinde)
+    z0: float = 0.0   # içeriğin oturduğu yükseklik (altına giren katlar, ör. kilit kafası)
 
 
 @dataclass
 class SnapPair:
     no: int
-    kind: str          # citcit | miknatis
+    kind: str          # citcit
     size: str
     src: str
     dst: str | None
@@ -123,12 +130,17 @@ class Built:
     order: list[str]
     contents: list[ContentGeo]
     snaps: list[SnapPair]
-    stitches: list[dict]
     findings: list[Finding]
     hinge_lines: dict = field(default_factory=dict)
-    auto_features: list = field(default_factory=list)
+    fasteners: list = field(default_factory=list)
+    locks: list = field(default_factory=list)
 
     # ---- 3B dönüşümler -------------------------------------------------------
+    def hinge_frame(self, pid: str, fold=1.0) -> np.ndarray:
+        """Çocuk panelin menteşe çerçevesi (dönmeden önce): kıvrım yüzeyini çizmek için."""
+        p = self.panels[pid]
+        return self.matrix(p.parent, fold) @ _T(p.hinge_o[0], p.hinge_o[1], 0) @ _B(p.hinge_d)
+
     def matrix(self, pid: str, fold: float | dict = 1.0) -> np.ndarray:
         cache: dict = {}
         return self._matrix(pid, fold, cache)
@@ -153,11 +165,13 @@ class Built:
             else:
                 m = _T(self._part_offset(p.part), 0, 0)
         else:
-            a = math.radians(p.angle * self._fold_of(p, fold))
-            zh = 0.0 if p.angle >= 0 else -p.t
             f = self._fold_of(p, fold)
-            m = (self._matrix(p.parent, fold, cache) @ _T(0, 0, p.bulge * f) @ _T(p.hinge_o[0], p.hinge_o[1], 0)
+            a = math.radians(p.angle * f)
+            zh = p.bend_r if p.angle >= 0 else -p.t - p.bend_r
+            m = (self._matrix(p.parent, fold, cache) @ _T(p.hinge_o[0], p.hinge_o[1], 0)
                  @ _B(p.hinge_d) @ _T(0, 0, zh) @ _Rx(a) @ _T(0, 0, -zh))
+            if p.through:
+                m = m @ _T(0, 0, p.through * f)
         cache[pid] = m
         return m
 
@@ -203,8 +217,13 @@ class Built:
                     piece.add(mk.kind, p.flat.seg(mk.prim))
                 for tx in p.texts:
                     x, y = p.flat.apply((tx.x, tx.y))
-                    piece.texts.append(Text(x, y, tx.text, tx.size, tx.angle + p.flat.angle, tx.anchor))
-                cx, cy = p.flat.apply((p.w / 2, p.h * 0.5))
+                    piece.texts.append(Text(x, y, tx.text, tx.size, _upright(tx.angle + p.flat.angle), tx.anchor))
+                obstacles = [(m.prim.cx, m.prim.cy, m.prim.r + 2) for m in p.marks if isinstance(m.prim, Circle)]
+                obstacles += [(t_.x, t_.y + 1, 3.0) for t_ in p.texts]
+                ly = max((p.h * k for k in (0.5, 0.35, 0.65, 0.2, 0.8)),
+                         key=lambda yy: min([math.hypot((ox - p.w / 2) / 3, oy - yy) - rr for ox, oy, rr in obstacles] or [99])
+                         - abs(yy - p.h / 2) * 0.05)
+                cx, cy = p.flat.apply((p.w / 2, ly))
                 ang = p.flat.angle
                 if ang > 90 or ang <= -90:
                     ang -= 180
@@ -238,6 +257,21 @@ class Built:
         a = np.array(pts)
         ext = sorted(a.max(0) - a.min(0), reverse=True)
         return tuple(float(v) for v in ext)
+
+
+def _upright(a: float) -> float:
+    a = (a + 180) % 360 - 180
+    if a > 90:
+        a -= 180
+    elif a <= -90:
+        a += 180
+    return a
+
+
+def fold_step_numbers(panels) -> dict[int, int]:
+    """kat_sirasi → talimattaki 'Katlama n' numarası (yalnızca gerçekten katlanan seviyeler sayılır)."""
+    levels = sorted({p.spec.kat_sirasi for p in panels if p.parent and abs(p.angle) > 1 and p.spec.kat_sirasi})
+    return {lv: i + 1 for i, lv in enumerate(levels)}
 
 
 # --- matris yardımcıları ---------------------------------------------------------
@@ -536,8 +570,9 @@ def build(design: Tasarim) -> Built:
         if hi - lo <= 0.5:
             F.append(Finding("hata", "mentese", f"{pid}: '{par.id}' panelinin {p.edge} kenarıyla örtüşmüyor (ofset?)."))
             continue
-        allow = math.radians(abs(p.angle)) * p.t / 2
+        allow = math.radians(abs(p.angle)) * (BEND * p.t + p.t / 2)
         p.hinge_o, p.hinge_d, p.allow = o, d, allow
+        p.hinge_x = (lo - (s - p.w / 2), hi - (s - p.w / 2))
         p.flat = par.flat.compose(Affine2(o[0] + n[0] * allow, o[1] + n[1] * allow, d[0], d[1]))
         # menteşe çizgileri (ebeveyn yerelinde → açınım)
         A = (mid[0] + d[0] * lo, mid[1] + d[1] * lo)
@@ -552,7 +587,8 @@ def build(design: Tasarim) -> Built:
         if allow > 1e-6:
             strip += [tf(Line(*A, *A2)), tf(Line(*B, *B2))]
         kind = "vadi" if p.angle >= 0 else "dağ"
-        label = f"kat {p.spec.kat_sirasi or ''} {kind} {abs(p.angle):.0f}°".replace("  ", " ")
+        step_no = fold_step_numbers(panels.values()).get(p.spec.kat_sirasi, "")
+        label = f"katlama {step_no}: {kind} {abs(p.angle):.0f}°"
         if abs(p.angle) < 1e-6:
             label = "kat yok (düz)"
         hinge_lines.setdefault(p.part, []).append((inner, strip, tf(Line(*Am, *Bm)), label))
@@ -560,10 +596,11 @@ def build(design: Tasarim) -> Built:
     if any(f.level == "hata" for f in F):
         raise BuildError(F)
 
-    b = Built(design, env, panels, parts, part_t, part_mat, roots, order, [], [], [], F, hinge_lines)
+    b = Built(design, env, panels, parts, part_t, part_mat, roots, order, [], [], F, hinge_lines)
     _overlap_check(b)
     _mount_and_contents(b, num)
     _features(b, num)
+    _settle_contents(b)
     if any(f.level == "hata" for f in F):
         raise BuildError(F)
     return b
@@ -614,36 +651,24 @@ def _proper_cross(p1, p2, p3, p4) -> bool:
 def _mount_and_contents(b: Built, num):
     d = b.design
     F = b.findings
-    # içerikler
     for ic in d.icerikler:
         if ic.panel not in b.panels:
             F.append(Finding("hata", "icerik", f"İçerik paneli '{ic.panel}' yok."))
             continue
         p = b.panels[ic.panel]
         if ic.tip == "ozel":
-            w, h, k = num(ic.genislik, "icerik.genislik", 50.0), num(ic.yukseklik, "icerik.yukseklik", 50.0), num(ic.kalinlik, "icerik.kalinlik", 1.0)
+            w = num(ic.genislik, "icerik.genislik", 50.0)
+            h = num(ic.yukseklik, "icerik.yukseklik", 50.0)
+            k = num(ic.kalinlik, "icerik.kalinlik", 1.0)
         else:
-            w, h, k = M.CONTENTS[ic.tip]
+            w, h, k = M.CONTENTS.get(ic.tip, M.CONTENTS["kart"])
         s = k * max(1, ic.adet)
         x = num(ic.x, "icerik.x", (p.w - w) / 2)
-        y = num(ic.y, "icerik.y", min(1.0 + num(d.kenar_payi, "kenar_payi", 3.5), max(0.5, p.h - h)))
+        y = num(ic.y, "icerik.y", 0.3)
         under = p.mount is not None and p.mount.ana_panel != "" and p.parent is None
         b.contents.append(ContentGeo(ic, p.id, x, y, w, h, s, under))
         if under:
             p.lift += s
-    # içeriğin üstüne 180° katlanan paneller kabarır
-    for cg in b.contents:
-        if cg.under:
-            continue
-        for q in b.panels.values():
-            if q.parent != cg.panel or abs(q.angle) < 150:
-                continue
-            m = np.linalg.inv(b.matrix(cg.panel, 1.0)) @ b.matrix(q.id, 1.0)
-            pts = [(m @ np.array([x, y, 0, 1.0]))[:2] for x, y in q.quad]
-            xs, ys = [v[0] for v in pts], [v[1] for v in pts]
-            if min(xs) < cg.x + cg.w and cg.x < max(xs) and min(ys) < cg.y + cg.h and cg.y < max(ys):
-                q.bulge = max(q.bulge, cg.s)
-    # monte parçaların z konumu (aynı yüzde, önce gelenlerin üstüne)
     placed: dict = {}
     for part_id, root in b.roots.items():
         rp = b.panels[root]
@@ -664,234 +689,82 @@ def _mount_and_contents(b: Built, num):
         for (bx, extra) in placed.get(key, []):
             if bx[0] < box[2] and box[0] < bx[2] and bx[1] < box[3] and box[1] < bx[3]:
                 below += extra
-        if mt.yuz == "ic":
-            rp.mount_z = below + rp.t + rp.lift
-        else:
-            rp.mount_z = -host.t - below
+        rp.mount_z = below + rp.t + rp.lift if mt.yuz == "ic" else -host.t - below
         placed.setdefault(key, []).append((box, rp.t + rp.lift))
         if x < -0.01 or y < -0.01 or x + rp.w > host.w + 0.01 or y + rp.h > host.h + 0.01:
             F.append(Finding("uyari", "montaj_tasma", f"'{part_id}' parçası '{host.id}' panelinin dışına taşıyor.", part_id))
-        if mt.dikis_kenarlari:
-            b.auto_features.append(Ozellik(
-                tip="dikis", panel=root, x="", y="", genislik="", yukseklik="", aci="", boyut="",
-                kenarlar=list(mt.dikis_kenarlari), kenar_payi="", hedefler=[host.id], etiket=f"{part_id} montaj dikişi"))
 
 
 # --- özellikler -------------------------------------------------------------------------
-def stitch_runs(p: PanelGeo, edges: list[str], e: float) -> list[list[Segment]]:
-    """Seçilen kenarlar boyunca, kenardan e içeride dikiş hatları (yerel)."""
-    V = p.quad
-    n = 4
-    off = []
-    for i in range(n):
-        a, b_ = V[i], V[(i + 1) % n]
-        L = math.dist(a, b_)
-        nx, ny = -(b_[1] - a[1]) / L, (b_[0] - a[0]) / L  # içe normal (CCW)
-        off.append(((a[0] + nx * e, a[1] + ny * e), (b_[0] + nx * e, b_[1] + ny * e)))
-    C = []
-    for i in range(n):
-        q = line_intersection(*off[i - 1], *off[i])
-        C.append(q)
-    sel = [EDGES.index(x) for x in EDGES if x in edges]
-    if not sel:
-        return []
-    runs = []
-    if len(sel) == 4:
-        idxs = [0, 1, 2, 3]
-        closed = True
-        runs.append((idxs, closed))
-    else:
-        start = [i for i in sel if (i - 1) % 4 not in sel]
-        for s0 in start:
-            run = [s0]
-            while (run[-1] + 1) % 4 in sel and len(run) < 4:
-                run.append((run[-1] + 1) % 4)
-            runs.append((run, False))
-    out = []
-    for run, closed in runs:
-        pts = [C[i] for i in run] + ([] if closed else [C[(run[-1] + 1) % 4]])
-        radii = [max(0.0, p.corners[i] - e) for i in run] + ([] if closed else [0.0])
-        segs = []
-        m = len(pts)
-        trimmed = []
-        for k in range(m):
-            interior = closed or 0 < k < m - 1
-            res = fillet(pts[k - 1], pts[k], pts[(k + 1) % m], radii[k]) if interior and radii[k] > 0 else None
-            trimmed.append(res if res else (pts[k], None, pts[k]))
-        rng = range(m) if closed else range(m - 1)
-        for k in rng:
-            _, arc, t_out = trimmed[k]
-            if arc is not None and (closed or k > 0):
-                segs.append(arc)
-            nxt_in = trimmed[(k + 1) % m][0]
-            segs.append(Line(t_out[0], t_out[1], nxt_in[0], nxt_in[1]))
-        out.append(segs)
-    return out
-
-
-def holes_on_run(segs: list[Segment], pitch: float, closed: bool = False) -> list[tuple[float, float]]:
-    """Dikiş deliklerini yerleştirir.
-
-    * Ara kısım (köşe yayları, alt kenar): her keskin köşede bölünüp eşit dağıtılır (köşeye delik düşer).
-    * Açık hattın uç doğruları: iç uçtan başlayarak SABİT zımba adımıyla ilerler; böylece aynı kenara
-      dikilen farklı yükseklikteki parçaların (kademeli cepler) delikleri ortak ızgaraya düşer.
-      Son delik tam uçtadır; kalan aralık 0.6 adımdan kısaysa bir önceki delik kaldırılır.
-    """
-    if not segs:
-        return []
-    if closed or len(segs) == 1 and not isinstance(segs[0], Line):
-        return _uniform(segs, pitch)
-    if len(segs) == 1:
-        s = segs[0]
-        a, c = (s.x0, s.y0), (s.x1, s.y1)
-        if (a[1], a[0]) > (c[1], c[0]):  # alttaki/soldaki uçtan başla
-            a, c = c, a
-        return _grid(a, c, pitch, include_start=True)
-    first, last = segs[0], segs[-1]
-    mid = segs[1:-1]
-    pts: list = []
-    head = isinstance(first, Line)
-    tail = isinstance(last, Line)
-    core = ([] if head else [first]) + mid + ([] if tail else [last])
-    core_pts = _uniform(core, pitch) if core else []
-    if head:
-        start_anchor = (first.x1, first.y1)
-        pts += list(reversed(_grid(start_anchor, (first.x0, first.y0), pitch, include_start=not core_pts)))
-    pts += core_pts
-    if tail:
-        anchor = (last.x0, last.y0)
-        g = _grid(anchor, (last.x1, last.y1), pitch, include_start=not core_pts and not head)
-        pts += g
-    out = []
-    for q in pts:
-        if not out or math.dist(out[-1], q) > 0.3:
-            out.append(q)
-    return out
-
-
-def _uniform(segs, pitch):
-    groups, cur = [], []
-    for s in segs:
-        if cur and isinstance(s, Line) and isinstance(cur[-1], Line):
-            groups.append(cur)
-            cur = []
-        cur.append(s)
-    if cur:
-        groups.append(cur)
-    pts = []
-    for g in groups:
-        ps, _ = points_along(g, pitch)
-        for q in ps:
-            if not pts or math.dist(pts[-1], q) > 0.3:
-                pts.append(q)
-    return pts
-
-
-def _grid(a, c, pitch, include_start=True):
-    L = math.dist(a, c)
-    if L < 1e-9:
-        return [a] if include_start else []
-    ux, uy = (c[0] - a[0]) / L, (c[1] - a[1]) / L
-    n = int(L / pitch + 1e-9)
-    ds = [i * pitch for i in range(0 if include_start else 1, n + 1)]
-    rem = L - n * pitch
-    if rem > 0.02:
-        if rem < 0.6 * pitch and ds and ds[-1] > 0:
-            ds.pop()
-        ds.append(L)
-    return [(a[0] + ux * t, a[1] + uy * t) for t in ds]
-
-
 def _features(b: Built, num):
     d = b.design
     F = b.findings
-    pitch = num(d.dikis_araligi, "dikis_araligi", 3.85)
-    e_def = num(d.kenar_payi, "kenar_payi", 3.5)
     snap_no = 0
-    for i, f in enumerate(list(d.ozellikler) + b.auto_features):
+    for i, f in enumerate(d.ozellikler):
         where = f"özellik {i + 1} ({f.tip} @ {f.panel})"
         if f.panel not in b.panels:
             F.append(Finding("hata", "ozellik_panel", f"{where}: panel yok."))
             continue
         p = b.panels[f.panel]
-        targets = [t for t in f.hedefler if t != p.id]
-        for t in targets:
+        targets = []
+        for t in f.hedefler:
+            if t == p.id:
+                continue
             if t not in b.panels:
                 F.append(Finding("hata", "hedef", f"{where}: hedef panel '{t}' yok."))
-        targets = [t for t in targets if t in b.panels]
-
-        if f.tip == "dikis":
-            e = num(f.kenar_payi, where, e_def)
-            for edge in f.kenarlar:
-                prof = {"ust": p.spec.profil_ust, "sol": p.spec.profil_sol, "sag": p.spec.profil_sag}.get(edge)
-                if prof is not None and prof.tip != "duz":
-                    F.append(Finding("uyari", "dikis_profil", f"{where}: profilli '{edge}' kenarında dikiş düz hat olarak çizildi.", p.id))
-            runs = stitch_runs(p, f.kenarlar, e)
-            closed = len(set(f.kenarlar)) == 4
-            for segs in runs:
-                holes = holes_on_run(segs, pitch, closed)
-                _place_stitch(b, p, segs, holes, targets, where, f.etiket)
-                b.stitches[-1]["end_rem"] = [s_.length() % pitch for s_ in ((segs[0], segs[-1]) if len(segs) > 1 else segs) if isinstance(s_, Line)]
-            continue
-
-        if f.tip == "dikis_cizgisi":
-            x, y = num(f.x, where), num(f.y, where)
-            L, a = num(f.genislik, where, 0.0), math.radians(num(f.aci, where, 0.0))
-            seg = Line(x, y, x + L * math.cos(a), y + L * math.sin(a))
-            holes = points_along([seg], pitch)[0]
-            _place_stitch(b, p, [seg], holes, targets, where, f.etiket)
-            continue
-
-        x, y = num(f.x, where, p.w / 2), num(f.y, where, p.h / 2)
-        if f.tip in ("citcit", "miknatis"):
-            snap_no += 1
-            if f.tip == "citcit":
-                sn = M.SNAPS.get(f.boyut or "L20")
-                if sn is None:
-                    F.append(Finding("hata", "citcit_boyut", f"{where}: çıtçıt boyutu '{f.boyut}' (mini/L20/L24)."))
-                    continue
-                cap, hole, size = sn.sapka_cap, sn.dikme_delik, sn.key
             else:
-                cap = num(f.boyut, where, 12.0)
-                hole, size = 0.0, f"{cap:.0f} mm"
-            dst = _resolve_target(b, p, (x, y), targets, where, auto=True)
-            tag = "Ç" if f.tip == "citcit" else "M"
-            _snap_marks(p, (x, y), cap, hole, f"{tag}{snap_no} " + ("şapka+dişi" if f.tip == "citcit" else "mıknatıs"))
-            pair = SnapPair(snap_no, f.tip, size, p.id, None, (x, y), None, 0.0)
+                targets.append(t)
+        x, y = num(f.x, where, p.w / 2), num(f.y, where, p.h / 2)
+
+        if f.tip == "citcit":
+            snap_no += 1
+            sn = M.SNAPS.get(f.boyut or "L20")
+            if sn is None:
+                F.append(Finding("hata", "citcit_boyut", f"{where}: çıtçıt boyutu '{f.boyut}' (mini/L20/L24)."))
+                continue
+            dst = _resolve_target(b, p, (x, y), targets, where)
+            _snap_marks(p, (x, y), sn.sapka_cap, sn.dikme_delik, f"Ç{snap_no} şapka+dişi")
+            pair = SnapPair(snap_no, "citcit", sn.key, p.id, None, (x, y), None, 0.0)
             if dst:
                 tid, loc = dst
-                _snap_marks(b.panels[tid], (loc[0], loc[1]), cap, hole,
-                            f"{tag}{snap_no} " + ("erkek+dikme" if f.tip == "citcit" else "mıknatıs"))
-                pair.dst, pair.dst_xy, pair.gap = tid, (loc[0], loc[1]), abs(loc[2])
+                _snap_marks(b.panels[tid], (loc[0], loc[1]), sn.sapka_cap, sn.dikme_delik, f"Ç{snap_no} erkek+dikme")
+                pair.dst, pair.dst_xy = tid, (float(loc[0]), float(loc[1]))
                 pair.dst_side = 1 if loc[2] > 0 else -1
                 back = b.to_local(p.id, b.world(tid, (loc[0], loc[1])))
                 pair.src_side = -1 if back[2] > 0 else 1
+                pair.gap = slab_gap(b, p.id, (x, y), tid)
             b.snaps.append(pair)
             continue
 
-        if f.tip in ("percin", "delik"):
-            dia = num(f.boyut, where, 3.0 if f.tip == "delik" else 2.5)
-            for (tp, (lx, ly)) in [(p, (x, y))] + _through(b, p, [(x, y)], targets, where):
+        if f.tip in ("percin", "vida", "delik"):
+            fs = M.FASTENERS.get(f.tip)
+            dia = num(f.boyut, where, fs.delik if fs else 4.0)
+            placements = [(p, (x, y))] + _through(b, p, [(x, y)], targets, where)
+            for tp, (lx, ly) in placements:
                 tp.marks.append(Mark(Kind.HOLE, Circle(lx, ly, dia / 2)))
-                if f.tip == "percin":
-                    tp.texts.append(Text(lx, ly + dia / 2 + 1.5, "perçin", 2.0))
+                if fs:
+                    tp.marks.append(Mark(Kind.GUIDE, Circle(lx, ly, fs.bas_cap / 2)))
+            if fs:
+                p.texts.append(Text(x, y - fs.bas_cap / 2 - 3.0, "perçin" if f.tip == "percin" else "vida", 2.0))
+                b.fasteners.append({"tip": f.tip, "panel": p.id, "xy": (x, y),
+                                    "layers": [tp.id for tp, _ in placements], "where": where})
             continue
 
         if f.tip in ("yarik", "kilit_yarigi"):
-            L, a = num(f.genislik, where, 10.0), math.radians(num(f.aci, where, 90.0))
-            relief = num(f.boyut, where, 1.5)
+            L, a = num(f.genislik, where, 10.0), math.radians(num(f.aci, where, 0.0))
+            relief = 1.5
             pts = [(x, y), (x + L * math.cos(a), y + L * math.sin(a))]
             if f.tip == "kilit_yarigi":
                 if not targets:
-                    dst = _resolve_target(b, p, ((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2), [], where, auto=True)
+                    mid = ((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2)
+                    dst = _resolve_target(b, p, mid, [], where)
                     targets = [dst[0]] if dst else []
-                placements = _through(b, p, pts, targets, where, all_or_nothing=True)
-                pairs = {}
-                for tp, q in placements:
-                    pairs.setdefault(tp.id, []).append(q)
-                todo = [(b.panels[k], v) for k, v in pairs.items() if len(v) == 2]
+                todo = [(b.panels[k], v) for k, v in _group(_through(b, p, pts, targets, where, all_or_nothing=True)).items()
+                        if len(v) == 2]
                 if not todo:
                     F.append(Finding("hata", "kilit_hedef", f"{where}: kilit yarığı katlanınca hiçbir panele denk gelmiyor."))
+                for tp, _ in todo:
+                    b.locks.append({"neck": p.id, "target": tp.id, "length": L, "where": where})
             else:
                 todo = [(p, pts)] + [(b.panels[k], v) for k, v in _group(_through(b, p, pts, targets, where, all_or_nothing=True)).items() if len(v) == 2]
             for tp, (q0, q1) in todo:
@@ -905,15 +778,54 @@ def _features(b: Built, num):
             a = num(f.aci, where, 0.0)
             r = min(w, h) / 2 if f.tip == "oval_delik" else (min(3.0, min(w, h) / 4) if f.tip == "pencere" else 0.0)
             from .geometry import rounded_rect
-            rr = rounded_rect(-w / 2, -h / 2, w, h, r)
             T = Affine2(x, y, math.cos(math.radians(a)), math.sin(math.radians(a)))
             kind = Kind.GUIDE if f.tip == "logo_alani" else Kind.CUT
-            for s in rr:
-                p.marks.append(Mark(kind, T.seg(s)))
+            targets_all = [(p, (x, y))] + (_through(b, p, [(x, y)], targets, where) if f.tip == "oval_delik" else [])
+            for tp, (lx, ly) in targets_all:
+                T = Affine2(lx, ly, math.cos(math.radians(a)), math.sin(math.radians(a)))
+                for s_ in rounded_rect(-w / 2, -h / 2, w, h, r):
+                    tp.marks.append(Mark(kind, T.seg(s_)))
             if f.tip == "logo_alani":
                 p.texts.append(Text(x, y - 1, f.etiket or "logo / damga", 2.4))
             continue
         F.append(Finding("uyari", "ozellik_tip", f"{where}: desteklenmeyen özellik."))
+
+    # kilit kafaları: yarıktan geçip hedefin öbür yüzüne
+    for p in b.panels.values():
+        if not p.spec.yariktan_gecer:
+            continue
+        lock = next((lk for lk in b.locks if lk["neck"] == p.parent), None)
+        if lock is None:
+            F.append(Finding("hata", "gecis", f"'{p.id}' yarıktan geçer olarak işaretli ama ebeveyninde kilit_yarigi yok."))
+            continue
+        tgt = b.panels[lock["target"]]
+        rel = np.linalg.inv(b.matrix(p.id, 1.0)) @ b.matrix(tgt.id, 1.0)
+        if abs(rel[2, 2]) < 0.9:
+            F.append(Finding("hata", "gecis", f"'{p.id}' kilit kafası '{tgt.id}' paneline paralel değil."))
+            continue
+        z_in = rel[2, 3]
+        z_out = z_in - rel[2, 2] * tgt.t
+        far = z_in if abs(z_in) > abs(z_out) else z_out
+        p.through = float(far + p.t) if far > 0 else float(far)
+
+
+def _settle_contents(b: Built):
+    """İçeriği, taban panelin iç yüzündeki katların (kilit kafası vb.) üstüne oturtur."""
+    for cg in b.contents:
+        if cg.under:
+            continue
+        inv = np.linalg.inv(b.matrix(cg.panel, 1.0))
+        top = 0.0
+        for q in b.panels.values():
+            if q.id == cg.panel:
+                continue
+            m = inv @ b.matrix(q.id, 1.0)
+            for (x, y) in q.poly[:: max(1, len(q.poly) // 40)] + q.quad:
+                for z in (0.0, -q.t):
+                    v = m @ np.array([x, y, z, 1.0])
+                    if cg.x < v[0] < cg.x + cg.w and cg.y < v[1] < cg.y + cg.h and 0.05 < v[2] < 3 * q.t + 0.5:
+                        top = max(top, float(v[2]))
+        cg.z0 = top
 
 
 def _group(placements):
@@ -923,21 +835,6 @@ def _group(placements):
     return g
 
 
-def _place_stitch(b: Built, p: PanelGeo, segs, holes, targets, where, label):
-    hr = 0.5
-    for s in segs:
-        p.marks.append(Mark(Kind.GUIDE, s))
-    for (x, y) in holes:
-        p.marks.append(Mark(Kind.STITCH, Circle(x, y, hr)))
-    record = {"panel": p.id, "length": path_length(segs), "holes": len(holes), "targets": [], "label": label}
-    for tp, (x, y) in _through(b, p, holes, targets, where):
-        if not any(m.kind == Kind.STITCH and math.dist((m.prim.cx, m.prim.cy), (x, y)) < 0.3 for m in tp.marks):
-            tp.marks.append(Mark(Kind.STITCH, Circle(x, y, hr)))
-        if tp.id not in record["targets"]:
-            record["targets"].append(tp.id)
-    b.stitches.append(record)
-
-
 def _through(b: Built, p: PanelGeo, pts, targets, where, all_or_nothing=False):
     """Kaynak paneldeki noktaları katlı hâlde hedef panellere izdüşürür."""
     out = []
@@ -945,57 +842,66 @@ def _through(b: Built, p: PanelGeo, pts, targets, where, all_or_nothing=False):
     for tid in targets:
         tp = b.panels[tid]
         inv = np.linalg.inv(b.matrix(tid, 1.0))
-        locs = []
-        for (x, y) in pts:
-            q = inv @ (m @ np.array([x, y, 0.0, 1.0]))
-            locs.append(q[:3])
-        inside = [point_in_polygon((q[0], q[1]), tp.poly) and dist_to_polygon_edge((q[0], q[1]), tp.poly) > 0.3 for q in locs]
-        normal_ok = abs(float((inv @ m)[2, 2])) > 0.95  # yüzeyler paralel mi
-        if not normal_ok:
+        rel = inv @ m
+        if abs(float(rel[2, 2])) < 0.95:
             b.findings.append(Finding("hata", "hedef_aci", f"{where}: '{tid}' paneli katlanınca kaynakla paralel değil; delikler eşleşmez.", tid))
             continue
+        locs = [(rel @ np.array([x, y, 0.0, 1.0]))[:3] for (x, y) in pts]
+        inside = [point_in_polygon((q[0], q[1]), tp.poly) and dist_to_polygon_edge((q[0], q[1]), tp.poly) > 0.3 for q in locs]
         gap = max(abs(q[2]) for q in locs) if locs else 0
-        if gap > 40:
+        if gap > 25:
             b.findings.append(Finding("uyari", "hedef_uzak", f"{where}: '{tid}' paneli {gap:.0f} mm uzakta; gerçekten üst üste mi?", tid))
         n_in = sum(inside)
         if n_in == 0:
             b.findings.append(Finding("hata", "hedef_disarida", f"{where}: katlanınca '{tid}' panelinin dışına düşüyor.", tid))
             continue
         if n_in < len(pts):
+            b.findings.append(Finding("hata", "hedef_kismi", f"{where}: '{tid}' paneline yalnızca kısmen denk geliyor.", tid))
             if all_or_nothing:
-                b.findings.append(Finding("hata", "hedef_kismi", f"{where}: '{tid}' paneline yalnızca kısmen denk geliyor.", tid))
                 continue
-            b.findings.append(Finding("uyari", "hedef_kismi",
-                                      f"{where}: {len(pts)} deliğin {len(pts) - n_in} tanesi katlanınca '{tid}' panelinin dışında kalıyor.", tid))
         for q, ok in zip(locs, inside):
             if ok:
                 out.append((tp, (float(q[0]), float(q[1]))))
     return out
 
 
-def _resolve_target(b: Built, p: PanelGeo, xy, targets, where, auto=True):
-    """Çıtçıt/mıknatıs için karşı paneli bul (verilmediyse en yakın paralel panel)."""
+def _resolve_target(b: Built, p: PanelGeo, xy, targets, where):
+    """Çıtçıt / kilit için karşı paneli bul (verilmediyse en yakın paralel panel)."""
     m = b.matrix(p.id, 1.0)
     pw = m @ np.array([xy[0], xy[1], 0.0, 1.0])
-    cands = targets or ([q.id for q in b.panels.values() if q.id != p.id] if auto else [])
+    cands = targets or [q.id for q in b.panels.values() if q.id != p.id and q.id != p.parent and q.parent != p.id]
     best = None
     for tid in cands:
         tp = b.panels[tid]
         inv = np.linalg.inv(b.matrix(tid, 1.0))
-        rel = inv @ m
-        if abs(rel[2, 2]) < 0.95:
+        if abs((inv @ m)[2, 2]) < 0.95:
             continue
         q = inv @ pw
         if not point_in_polygon((q[0], q[1]), tp.poly):
             continue
-        if not targets and abs(q[2]) > 40:
+        if not targets and abs(q[2]) > 30:
             continue
         if best is None or abs(q[2]) < abs(best[1][2]):
             best = (tid, q[:3])
     if best is None:
         b.findings.append(Finding("hata", "karsilik_yok",
-                                  f"{where}: katlanınca karşısına gelen panel bulunamadı; kapak kapanınca bu nokta boşluğa düşüyor."))
+                                  f"{where}: katlanınca karşısına gelen panel bulunamadı; bu nokta boşluğa düşüyor."))
     return best
+
+
+def slab_gap(b: Built, src: str, xy, dst: str) -> float:
+    """Katlı hâlde kaynak paneldeki noktada iki levha arası boşluk (negatif: iç içe)."""
+    inv = np.linalg.inv(b.matrix(dst, 1.0))
+    m = b.matrix(src, 1.0)
+    za = (inv @ m @ np.array([xy[0], xy[1], 0.0, 1.0]))[2]
+    zb = (inv @ m @ np.array([xy[0], xy[1], -b.panels[src].t, 1.0]))[2]
+    lo, hi = min(za, zb), max(za, zb)
+    t = b.panels[dst].t
+    if lo >= 0:
+        return float(lo)
+    if hi <= -t:
+        return float(-t - hi)
+    return float(-min(hi - (-t), 0 - lo))
 
 
 def _snap_marks(p: PanelGeo, xy, cap, hole, label):
@@ -1003,4 +909,4 @@ def _snap_marks(p: PanelGeo, xy, cap, hole, label):
     if hole > 0:
         p.marks.append(Mark(Kind.HOLE, Circle(x, y, hole / 2)))
     p.marks.append(Mark(Kind.GUIDE, Circle(x, y, cap / 2)))
-    p.texts.append(Text(x, y + cap / 2 + 1.5, label, 2.2))
+    p.texts.append(Text(x, y - cap / 2 - 3.2, label, 2.2))

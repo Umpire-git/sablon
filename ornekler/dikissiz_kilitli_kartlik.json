@@ -1,41 +1,200 @@
 {
   "ad": "Dikişsiz Kilitli Kartlık",
-  "konsept": "Tek parça kesilen, hiç dikiş ve yapıştırıcı gerektirmeyen kartlık. Yan duvarların ucundaki diller arka paneldeki yarıklara geçip kilitlenir. Başparmak oyuğu kartları tek hamlede çıkarır.",
+  "konsept": "Tek parça kesilen, dikiş ve yapıştırıcı gerektirmeyen kartlık. Ön paneldeki yan duvarların ucundaki diller arka panelin altından geçip yarıklara kilitlenir. Başparmak oyuğu kartları tek hamlede çıkarır.",
   "kategori": "kartlik",
   "malzeme": "vaketa",
-  "kalinlik": "1.4",
-  "renk": "#b9824f",
+  "kalinlik": "1.6",
+  "renk": "#b5763f",
   "degiskenler": [
-    {"ad": "kart_adet", "deger": "4", "aciklama": "kapasite"},
-    {"ad": "bosluk", "deger": "1.5", "aciklama": "kartın her iki yanındaki oynama payı"},
-    {"ad": "S", "deger": "kart_adet*kart_k + 0.5", "aciklama": "kart yığını kalınlığı"},
-    {"ad": "g", "deger": "S + t", "aciklama": "körük (yan duvar) genişliği"},
-    {"ad": "W", "deger": "kart_g + 2*bosluk + t", "aciklama": "panel genişliği"},
-    {"ad": "Hb", "deger": "kart_y - 6", "aciklama": "arka panel yüksekliği (kart 6 mm taşar)"},
-    {"ad": "Hf", "deger": "Hb*0.72", "aciklama": "ön panel yüksekliği"},
-    {"ad": "boyun", "deger": "14", "aciklama": "kilit dili boyun genişliği"},
-    {"ad": "dil", "deger": "16", "aciklama": "dilin arka yüzde kalan boyu"}
+    {
+      "ad": "kart_adet",
+      "deger": "4",
+      "aciklama": "kapasite"
+    },
+    {
+      "ad": "bosluk",
+      "deger": "1.5",
+      "aciklama": "kartın her iki yanındaki oynama payı"
+    },
+    {
+      "ad": "S",
+      "deger": "kart_adet*kart_k + 0.6",
+      "aciklama": "kart yığını kalınlığı (+ oynama)"
+    },
+    {
+      "ad": "g",
+      "deger": "S + t",
+      "aciklama": "alt körük: kart yığını + içeride kartların altına giren kilit kafası kalınlığı"
+    },
+    {
+      "ad": "W",
+      "deger": "kart_g + 2*bosluk",
+      "aciklama": "panel genişliği"
+    },
+    {
+      "ad": "Hb",
+      "deger": "kart_y - 6",
+      "aciklama": "arka panel (kart 6 mm taşar, tutması kolay)"
+    },
+    {
+      "ad": "Hf",
+      "deger": "Hb*0.72",
+      "aciklama": "ön panel yüksekliği"
+    },
+    {
+      "ad": "boyun",
+      "deger": "14",
+      "aciklama": "kilit dili boyun genişliği"
+    },
+    {
+      "ad": "dil",
+      "deger": "16",
+      "aciklama": "dilin arka panel altında kalan boyu"
+    }
   ],
   "parcalar": [
-    {"id": "govde", "ad": "Gövde", "adet": 1, "paneller": [
-      {"id": "arka", "ad": "Arka", "genislik": "W", "yukseklik": "Hb",
-       "koseler": {"sag_ust": "5", "sol_ust": "5"}},
-      {"id": "alt_koruk", "ad": "Alt körük", "ebeveyn": "arka", "kenar": "alt", "genislik": "W", "yukseklik": "g", "aci": "90", "kat_sirasi": 1},
-      {"id": "on", "ad": "Ön", "ebeveyn": "alt_koruk", "kenar": "ust", "genislik": "W", "yukseklik": "Hf", "aci": "90", "kat_sirasi": 1,
-       "profil_ust": {"tip": "oyuk", "olcu": "11"}},
-      {"id": "yan_sol", "ad": "Yan", "ebeveyn": "on", "kenar": "sol", "genislik": "Hf", "yukseklik": "g + t", "aci": "90", "kat_sirasi": 2},
-      {"id": "yan_sag", "ad": "Yan", "ebeveyn": "on", "kenar": "sag", "genislik": "Hf", "yukseklik": "g + t", "aci": "90", "kat_sirasi": 2},
-      {"id": "boyun_sol", "ad": "dil", "ebeveyn": "yan_sol", "kenar": "ust", "genislik": "boyun", "yukseklik": "dil", "aci": "90", "kat_sirasi": 3},
-      {"id": "boyun_sag", "ad": "dil", "ebeveyn": "yan_sag", "kenar": "ust", "genislik": "boyun", "yukseklik": "dil", "aci": "90", "kat_sirasi": 3},
-      {"id": "kafa_sol", "ad": "kilit", "ebeveyn": "boyun_sol", "kenar": "ust", "genislik": "boyun + 5", "yukseklik": "9", "aci": "0",
-       "koseler": {"sag_ust": "3", "sol_ust": "3"}},
-      {"id": "kafa_sag", "ad": "kilit", "ebeveyn": "boyun_sag", "kenar": "ust", "genislik": "boyun + 5", "yukseklik": "9", "aci": "0",
-       "koseler": {"sag_ust": "3", "sol_ust": "3"}}
-    ]}
+    {
+      "id": "govde",
+      "ad": "Gövde",
+      "adet": 1,
+      "paneller": [
+        {
+          "id": "arka",
+          "ad": "Arka",
+          "genislik": "W",
+          "yukseklik": "Hb",
+          "koseler": {
+            "sag_ust": "5",
+            "sol_ust": "5"
+          }
+        },
+        {
+          "id": "alt_koruk",
+          "ad": "Alt körük",
+          "ebeveyn": "arka",
+          "kenar": "alt",
+          "genislik": "W",
+          "yukseklik": "g",
+          "aci": "90",
+          "kat_sirasi": 1
+        },
+        {
+          "id": "on",
+          "ad": "Ön",
+          "ebeveyn": "alt_koruk",
+          "kenar": "ust",
+          "genislik": "W",
+          "yukseklik": "Hf",
+          "aci": "90",
+          "kat_sirasi": 1,
+          "profil_ust": {
+            "tip": "oyuk",
+            "olcu": "11"
+          }
+        },
+        {
+          "id": "yan_sol",
+          "ad": "Yan",
+          "ebeveyn": "on",
+          "kenar": "sol",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "yan_sag",
+          "ad": "Yan",
+          "ebeveyn": "on",
+          "kenar": "sag",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "boyun_sol",
+          "ad": "dil",
+          "ebeveyn": "yan_sol",
+          "kenar": "ust",
+          "genislik": "boyun",
+          "yukseklik": "dil",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "boyun_sag",
+          "ad": "dil",
+          "ebeveyn": "yan_sag",
+          "kenar": "ust",
+          "genislik": "boyun",
+          "yukseklik": "dil",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "kafa_sol",
+          "ad": "kilit",
+          "ebeveyn": "boyun_sol",
+          "kenar": "ust",
+          "genislik": "boyun + t + 4",
+          "yukseklik": "9",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "yariktan_gecer": true,
+          "koseler": {
+            "sag_ust": "3",
+            "sol_ust": "3"
+          }
+        },
+        {
+          "id": "kafa_sag",
+          "ad": "kilit",
+          "ebeveyn": "boyun_sag",
+          "kenar": "ust",
+          "genislik": "boyun + t + 4",
+          "yukseklik": "9",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "yariktan_gecer": true,
+          "koseler": {
+            "sag_ust": "3",
+            "sol_ust": "3"
+          }
+        }
+      ]
+    }
   ],
   "ozellikler": [
-    {"tip": "kilit_yarigi", "panel": "boyun_sol", "x": "-t/2", "y": "dil", "genislik": "boyun + t", "aci": "0", "hedefler": ["arka"]},
-    {"tip": "kilit_yarigi", "panel": "boyun_sag", "x": "-t/2", "y": "dil", "genislik": "boyun + t", "aci": "0", "hedefler": ["arka"]}
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sol",
+      "x": "-t/2",
+      "y": "dil",
+      "genislik": "boyun + t",
+      "aci": "0",
+      "hedefler": [
+        "arka"
+      ]
+    },
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sag",
+      "x": "-t/2",
+      "y": "dil",
+      "genislik": "boyun + t",
+      "aci": "0",
+      "hedefler": [
+        "arka"
+      ]
+    }
   ],
-  "icerikler": [{"tip": "kart", "adet": 4, "panel": "arka", "y": "0.5"}]
+  "icerikler": [
+    {
+      "tip": "kart",
+      "adet": 4,
+      "panel": "arka",
+      "y": "0.3"
+    }
+  ]
 }

@@ -29,8 +29,7 @@ STYLE = {
     Kind.SLIT: dict(color=HexColor("#000000"), width=0.35, dash=None),
     Kind.HOLE: dict(color=HexColor("#000000"), width=0.25, dash=None),
     Kind.FOLD: dict(color=HexColor("#1f5fbf"), width=0.3, dash=(3.0, 1.5)),
-    Kind.STITCH: dict(color=HexColor("#c0392b"), width=0.2, dash=None),
-    Kind.GUIDE: dict(color=HexColor("#c0392b"), width=0.15, dash=(1.0, 1.0)),
+    Kind.GUIDE: dict(color=HexColor("#c0392b"), width=0.2, dash=(1.0, 1.0)),
     Kind.GRAIN: dict(color=HexColor("#555555"), width=0.25, dash=None),
 }
 
@@ -49,10 +48,7 @@ def _draw_prim(c: Canvas, prim, kind: Kind):
         c.arc((prim.cx - r) * MM, (prim.cy - r) * MM, (prim.cx + r) * MM, (prim.cy + r) * MM,
               prim.a0, prim.a1 - prim.a0)
     elif isinstance(prim, Circle):
-        fill = 1 if kind == Kind.STITCH else 0
-        if fill:
-            c.setFillColor(st["color"])
-        c.circle(prim.cx * MM, prim.cy * MM, prim.r * MM, stroke=1, fill=fill)
+        c.circle(prim.cx * MM, prim.cy * MM, prim.r * MM, stroke=1, fill=0)
         if kind == Kind.HOLE:  # artı işareti: zımba merkezi
             k = prim.r * 0.7
             c.line((prim.cx - k) * MM, prim.cy * MM, (prim.cx + k) * MM, prim.cy * MM)
@@ -212,7 +208,7 @@ def _booklet(c: Canvas, doc, pw: float, ph: float, tiles: list[list[str]] | None
     _test_square(c, 15, w.y - 52)
     w.y -= 60
     w.heading("Çizgi türleri", 4.6)
-    for kind in (Kind.CUT, Kind.SLIT, Kind.FOLD, Kind.STITCH, Kind.HOLE, Kind.GUIDE):
+    for kind in (Kind.CUT, Kind.SLIT, Kind.FOLD, Kind.HOLE, Kind.GUIDE):
         w.need(6)
         st = STYLE[kind]
         c.setStrokeColor(st["color"])

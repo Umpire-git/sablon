@@ -1,0 +1,36 @@
+{
+  "ad": "Şikago Vidalı Minimal Kartlık",
+  "konsept": "Arka panelin yanlarından kalkan duvarlar ön panelin üzerine katlanır ve iki şikago vidasıyla sabitlenir. Dikiş ve kilit yok; vidalar hem bağlantı hem tasarım detayı. Sökülüp yeniden kurulabilir, deri değiştirilebilir.",
+  "kategori": "kartlik",
+  "malzeme": "vaketa",
+  "kalinlik": "1.6",
+  "renk": "#8a4b23",
+  "degiskenler": [
+    {"ad": "kart_adet", "deger": "6", "aciklama": "kapasite"},
+    {"ad": "S", "deger": "kart_adet*kart_k + 0.6", "aciklama": "kart yığını"},
+    {"ad": "g", "deger": "S", "aciklama": "alt körük"},
+    {"ad": "W", "deger": "kart_g + 3", "aciklama": "panel genişliği"},
+    {"ad": "Hb", "deger": "kart_y - 4", "aciklama": "arka panel"},
+    {"ad": "Hf", "deger": "Hb*0.7", "aciklama": "ön panel"},
+    {"ad": "kanat", "deger": "16", "aciklama": "ön panelin üzerine binen kanat"}
+  ],
+  "parcalar": [
+    {"id": "govde", "ad": "Gövde", "adet": 1, "paneller": [
+      {"id": "arka", "ad": "Arka", "genislik": "W", "yukseklik": "Hb", "koseler": {"sag_ust": "8", "sol_ust": "8"}},
+      {"id": "alt_koruk", "ad": "Alt körük", "ebeveyn": "arka", "kenar": "alt", "genislik": "W", "yukseklik": "g", "aci": "90", "kat_sirasi": 1},
+      {"id": "on", "ad": "Ön", "ebeveyn": "alt_koruk", "kenar": "ust", "genislik": "W", "yukseklik": "Hf", "aci": "90", "kat_sirasi": 1},
+      {"id": "duvar_sol", "ad": "Duvar", "ebeveyn": "arka", "kenar": "sol", "ofset": "(Hf - Hb)/2", "genislik": "Hf", "yukseklik": "g + t", "aci": "90", "kat_sirasi": 2},
+      {"id": "duvar_sag", "ad": "Duvar", "ebeveyn": "arka", "kenar": "sag", "ofset": "(Hf - Hb)/2", "genislik": "Hf", "yukseklik": "g + t", "aci": "90", "kat_sirasi": 2},
+      {"id": "kanat_sol", "ad": "Kanat", "ebeveyn": "duvar_sol", "kenar": "ust", "genislik": "Hf", "yukseklik": "kanat", "aci": "90", "kat_sirasi": 2,
+       "koseler": {"sag_ust": "4", "sol_ust": "4"}},
+      {"id": "kanat_sag", "ad": "Kanat", "ebeveyn": "duvar_sag", "kenar": "ust", "genislik": "Hf", "yukseklik": "kanat", "aci": "90", "kat_sirasi": 2,
+       "koseler": {"sag_ust": "4", "sol_ust": "4"}}
+    ]}
+  ],
+  "ozellikler": [
+    {"tip": "vida", "panel": "kanat_sol", "x": "Hf/2", "y": "kanat/2 + 1", "hedefler": ["on"]},
+    {"tip": "vida", "panel": "kanat_sag", "x": "Hf/2", "y": "kanat/2 + 1", "hedefler": ["on"]},
+    {"tip": "logo_alani", "panel": "on", "x": "W/2", "y": "Hf/2", "genislik": "30", "yukseklik": "10", "etiket": "damga"}
+  ],
+  "icerikler": [{"tip": "kart", "adet": 6, "panel": "arka", "y": "0.3"}]
+}

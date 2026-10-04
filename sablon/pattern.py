@@ -11,20 +11,18 @@ class Kind(str, Enum):
     CUT = "cut"          # dış kesim çizgisi
     SLIT = "slit"        # iç yarık / kesik
     HOLE = "hole"        # zımba deliği (yırtılma önleyici vb.)
-    FOLD = "fold"        # katlama çizgisi (deri: kat yeri, karton: bigi)
-    STITCH = "stitch"    # dikiş deliği
-    GUIDE = "guide"      # yardımcı çizgi (dikiş hattı, hizalama)
-    GRAIN = "grain"      # deri omurga / karton elyaf yönü oku
+    FOLD = "fold"        # katlama çizgisi
+    GUIDE = "guide"      # yardımcı çizgi (çıtçıt/vida başı, logo alanı)
+    GRAIN = "grain"      # deri omurga yönü oku
 
 
 KIND_LABEL_TR = {
     Kind.CUT: "Kesim çizgisi",
     Kind.SLIT: "Yarık (iç kesim)",
     Kind.HOLE: "Zımba deliği",
-    Kind.FOLD: "Katlama / bigi çizgisi",
-    Kind.STITCH: "Dikiş deliği",
-    Kind.GUIDE: "Yardımcı çizgi",
-    Kind.GRAIN: "Elyaf / omurga yönü",
+    Kind.FOLD: "Katlama çizgisi",
+    Kind.GUIDE: "Yardımcı çizgi (çıtçıt / vida başı, logo)",
+    Kind.GRAIN: "Deri omurga yönü",
 }
 
 

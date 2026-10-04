@@ -1,4 +1,4 @@
-"""Malzeme ve donanım bilgi bankası (deri, karton, çıtçıt, zımba...).
+"""Deri ve donanım bilgi bankası (vaketa, crazy horse, çıtçıt, perçin, şikago vidası...).
 
 Değerler atölye pratiğinden alınmış yaklaşık değerlerdir; tedarikçinizin ölçüleriyle
 güncelleyebilirsiniz. Kontroller ve yapım talimatları buradan beslenir.
@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 class Material:
     key: str
     ad: str
-    tur: str                      # "deri" | "karton" | "kumas"
+    tur: str                      # "deri"
     aciklama: str
     kalinlik_onerilen: tuple[float, float]
     renk: str                     # 3B ön izleme varsayılan rengi
@@ -58,26 +58,6 @@ MATERIALS: dict[str, Material] = {
             "temiz bez koyun.",
             ("Yumuşak olduğu için çıtçıt ve kilit dili bölgelerinde içten takviye (ince vaketa/astar) önerilir.",),
         ),
-        Material(
-            "krom_nappa", "Krom tabaklı nappa", "deri",
-            "Yumuşak, esnek astarlık / çanta derisi. Kalıplanmaz, perdahlanmaz.",
-            (0.6, 1.2), "#2f2f35", False, False,
-            "Kenar boyası veya kıvırma (katlama) kenar; perdah tutmaz.",
-            "Katlamaya gerek kalmadan yumuşaktır; keskin kat istenirse içten bant veya kanal.",
-            "Kontak yapıştırıcı.",
-            "Gerekmez.",
-            "Esneme yönünü kontrol edin; ürün uzunluğunu esnemeyen yöne verin.",
-        ),
-        Material(
-            "karton", "Karton / bristol (300–400 g/m²)", "karton",
-            "Kutu ve ambalaj için katlanabilir karton.",
-            (0.3, 0.6), "#e6d3b3", True, False,
-            "Gerekmez.",
-            "Bigi çizgilerini boş tükenmez kalemle bastırın, önce ters sonra düz katlayın.",
-            "Sıvı tutkal veya çift taraflı bant.",
-            "İsteğe bağlı lak.",
-            "Elyaf yönü bigi çizgilerine paralel olsun.",
-        ),
     ]
 }
 
@@ -99,13 +79,24 @@ SNAPS = {
     ]
 }
 
-MAGNETS = {"10": 10.0, "12": 12.0, "14": 14.0, "18": 18.0}
+@dataclass(frozen=True)
+class Fastener:
+    key: str
+    ad: str
+    bas_cap: float     # baş (kapak) çapı mm
+    delik: float       # zımba deliği mm
+    kavrama: tuple[float, float]  # birleştirebileceği toplam deri kalınlığı aralığı (yaklaşık)
 
-PRICKING_IRONS = [2.0, 2.7, 3.0, 3.38, 3.85, 4.0, 5.0, 6.0]
+
+FASTENERS = {
+    "percin": Fastener("percin", "Çift başlı perçin (8 mm baş)", 8.0, 2.5, (2.0, 6.0)),
+    "vida": Fastener("vida", "Şikago vidası (10 mm baş, 5 mm dikme)", 10.0, 4.5, (3.0, 7.0)),
+}
 
 CONTENTS = {  # tip: (genişlik, yükseklik, tek kalınlık)
     "kart": (85.6, 53.98, 0.76),          # ISO/IEC 7810 ID-1
     "banknot": (160.0, 72.0, 0.1),        # en büyük yaygın banknot ölçüsüne yakın (zarf payı)
+    "anahtar": (30.0, 60.0, 3.0),
 }
 
 
@@ -114,14 +105,6 @@ def material(key: str) -> Material:
         return MATERIALS[key]
     except KeyError:
         raise KeyError(f"Bilinmeyen malzeme '{key}'. Mevcut: {', '.join(MATERIALS)}") from None
-
-
-def thread_for(t: float) -> str:
-    if t <= 1.0:
-        return "0.45–0.55 mm mumlu polyester ip"
-    if t <= 1.8:
-        return "0.6–0.65 mm mumlu polyester ip"
-    return "0.8 mm mumlu polyester ip"
 
 
 def beveler_for(t: float) -> str:

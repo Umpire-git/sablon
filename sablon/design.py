@@ -1,8 +1,9 @@
 """Tasarım dili (DSL).
 
-Bir ürün; paneller (dikdörtgen tabanlı, profilli, köşeleri yuvarlatılabilir), paneller
-arasındaki menteşeler (katlama açısıyla), üst üste monte edilen parçalar (cep vb.) ve
-özelliklerden (çıtçıt, dikiş, yarık, delik...) oluşur. Ölçüler sayı ya da değişken
+DİKİŞSİZ deri ürünler içindir. Bir ürün; paneller (dikdörtgen tabanlı, profilli, köşeleri
+yuvarlatılabilir), paneller arasındaki menteşeler (katlama açısıyla), üst üste monte edilen
+parçalar ve özelliklerden (kilit yarığı, çıtçıt, perçin, şikago vidası, yarık, delik...)
+oluşur. Birleştirme yalnızca kat, dil-yarık kilidi, çıtçıt, perçin ve vidayla yapılır. Ölçüler sayı ya da değişken
 içeren ifadedir. Bu yapı hem JSON proje dosyası hem de Claude'un yapılandırılmış
 çıktısıdır; Claude geometri çizmez, bu dili kullanarak *tasarlar*, motor ise
 mm hassasiyetinde geometriyi, 3B modeli ve kontrolleri üretir.
@@ -51,6 +52,8 @@ class Panel(BaseModel):
     yukseklik: str = Field(description="Menteşeden serbest uca bitmiş ölçü (mm), iç yüzde kat çizgisinden ölçülür")
     aci: str = Field(description="Bitmiş üründe katlama açısı; + vadi (iç yüzler birbirine döner), - dağ; 0 düz")
     kat_sirasi: int = Field(description="Montajda katlanma sırası (1,2,3...); kökte veya katlanmayanlarda 0")
+    yariktan_gecer: bool = Field(description="Kilit kafası: ebeveyni (dil boynu) bir kilit_yarigi'ndan geçerken bu panel "
+                                             "yarıktan içeri girip hedef panelin öbür yüzüne geçer")
     koseler: Koseler
     daralma: str = Field(description="Serbest uçta her iki yandan içe çekilme (yamuk/şev), genelde 0")
     profil_ust: Profil
@@ -63,7 +66,6 @@ class Montaj(BaseModel):
     x: str = Field(description="Bu parçanın kök panelinin sol-alt köşesinin ana paneldeki x konumu")
     y: str
     yuz: Literal["ic", "dis"] = Field(description="Ana panelin iç (süet, katlamada içe bakan) veya dış yüzü")
-    dikis_kenarlari: list[Kenar] = Field(description="Ana panele dikilen kenarlar (ör. sol, alt, sag)")
 
 
 class Parca(BaseModel):
@@ -77,21 +79,19 @@ class Parca(BaseModel):
 
 
 class Ozellik(BaseModel):
-    tip: Literal["citcit", "miknatis", "percin", "delik", "yarik", "oval_delik", "pencere", "dikis",
-                 "dikis_cizgisi", "kilit_yarigi", "logo_alani"] = Field(
-        description="citcit/miknatis: katlanınca hedefte karşılığı otomatik konur; dikis: panel kenarları boyunca; "
-                    "dikis_cizgisi: (x,y)'den aci yönünde genislik uzunluğunda düz dikiş; kilit_yarigi: yalnızca "
-                    "HEDEF panellerde kesilen yarık (dil geçişi için, kaynakta tanımlanır)")
+    tip: Literal["kilit_yarigi", "citcit", "percin", "vida", "yarik", "delik", "oval_delik", "pencere", "logo_alani"] = Field(
+        description="kilit_yarigi: yalnızca HEDEF panelde kesilen yarık (dil boynu geçişi; kaynakta tanımlanır); "
+                    "citcit: katlanınca hedefte karşılığı otomatik konur; percin/vida: katlanınca üst üste gelen tüm "
+                    "hedef panellerden geçen delik (katları birleştirir); yarik: panelde düz kesik (kart yuvası vb.); "
+                    "delik: anahtar halkası vb.; oval_delik: kayış yuvası; pencere: iç kesim; logo_alani: damga alanı")
     panel: str
-    x: str = Field(description="Merkez (yarik/dikis_cizgisi için başlangıç) x; dikiş kenarı için boş")
+    x: str = Field(description="Merkez (yarik/kilit_yarigi için başlangıç noktası) x")
     y: str
-    genislik: str = Field(description="oval_delik/pencere/logo genişliği, yarık/dikiş çizgisi uzunluğu; yoksa boş")
+    genislik: str = Field(description="oval_delik/pencere/logo genişliği, yarık uzunluğu; yoksa boş")
     yukseklik: str = Field(description="oval_delik/pencere/logo yüksekliği; yoksa boş")
-    aci: str = Field(description="Yarık/oval/dikiş çizgisi açısı (derece, 0 = +x); yoksa boş")
-    boyut: str = Field(description="citcit: mini|L20|L24; miknatis: çap; delik/percin: çap; diğerleri boş")
-    kenarlar: list[Kenar] = Field(description="dikis için panelin dikilen kenarları; diğerlerinde boş liste")
-    kenar_payi: str = Field(description="dikis: kenara uzaklık (mm); boşsa tasarım varsayılanı")
-    hedefler: list[str] = Field(description="Katlanınca üst üste gelen ve aynı deliği/dikişi alacak panel id'leri")
+    aci: str = Field(description="Yarık/oval açısı (derece, 0 = +x); yoksa boş")
+    boyut: str = Field(description="citcit: mini|L20|L24; percin/vida/delik: delik çapı mm (boşsa standart)")
+    hedefler: list[str] = Field(description="Katlanınca üst üste gelen ve aynı deliği/yarığı alacak panel id'leri")
     etiket: str
 
 
@@ -110,11 +110,9 @@ class Tasarim(BaseModel):
     ad: str = Field(description="Satışa uygun kısa ürün adı")
     konsept: str = Field(description="Tasarım fikri, neyi farklı yaptığı, kime hitap ettiği (2-4 cümle)")
     kategori: str = Field(description="kartlik, cuzdan, anahtarlik, kilif, kutu...")
-    malzeme: str = Field(description="vaketa | crazy_horse | krom_nappa | karton")
-    kalinlik: str = Field(description="Varsayılan malzeme kalınlığı (mm)")
-    renk: str = Field(description="3B ön izleme rengi (#rrggbb)")
-    dikis_araligi: str = Field(description="Zımba adımı, ör. 3.85")
-    kenar_payi: str = Field(description="Varsayılan dikiş kenar payı, ör. 3.5")
+    malzeme: Literal["vaketa", "crazy_horse"]
+    kalinlik: str = Field(description="Deri kalınlığı (mm)")
+    renk: str = Field(description="Deri rengi (#rrggbb), 3B ön izleme için")
     degiskenler: list[Degisken]
     parcalar: list[Parca]
     ozellikler: list[Ozellik]
@@ -124,16 +122,15 @@ class Tasarim(BaseModel):
 # --- elle yazılmış JSON'lar için varsayılan doldurma ------------------------------
 _DUZ = {"tip": "duz", "olcu": "0"}
 _DEFAULTS = {
-    "Panel": {"ebeveyn": "", "kenar": "", "ofset": "0", "aci": "0", "kat_sirasi": 0, "daralma": "0",
+    "Panel": {"ebeveyn": "", "kenar": "", "ofset": "0", "aci": "0", "kat_sirasi": 0, "daralma": "0", "yariktan_gecer": False,
               "koseler": {"sol_alt": "0", "sag_alt": "0", "sag_ust": "0", "sol_ust": "0"},
               "profil_ust": _DUZ, "profil_sol": _DUZ, "profil_sag": _DUZ, "ad": ""},
-    "Montaj": {"ana_panel": "", "x": "0", "y": "0", "yuz": "ic", "dikis_kenarlari": []},
+    "Montaj": {"ana_panel": "", "x": "0", "y": "0", "yuz": "ic"},
     "Parca": {"adet": 1, "malzeme": "", "kalinlik": "", "ad": ""},
-    "Ozellik": {"x": "", "y": "", "genislik": "", "yukseklik": "", "aci": "", "boyut": "", "kenarlar": [],
-                "kenar_payi": "", "hedefler": [], "etiket": ""},
+    "Ozellik": {"x": "", "y": "", "genislik": "", "yukseklik": "", "aci": "", "boyut": "", "hedefler": [], "etiket": ""},
     "Icerik": {"x": "", "y": "", "genislik": "", "yukseklik": "", "kalinlik": "", "adet": 1},
-    "Tasarim": {"konsept": "", "kategori": "", "renk": "", "dikis_araligi": "3.85", "kenar_payi": "3.5",
-                "degiskenler": [], "ozellikler": [], "icerikler": [], "malzeme": "vaketa", "kalinlik": "1.4"},
+    "Tasarim": {"konsept": "", "kategori": "", "renk": "", "degiskenler": [], "ozellikler": [], "icerikler": [],
+                "malzeme": "vaketa", "kalinlik": "1.6"},
 }
 
 
@@ -141,18 +138,22 @@ def _fill(d: dict, kind: str) -> dict:
     out = copy.deepcopy(_DEFAULTS.get(kind, {}))
     out.update(d)
     for k, v in list(out.items()):
-        if isinstance(v, (int, float)) and k not in ("adet", "kat_sirasi"):
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and k not in ("adet", "kat_sirasi"):
             out[k] = str(v)
     return out
 
 
+_LEGACY = {"Tasarim": ("dikis_araligi", "kenar_payi"), "Montaj": ("dikis_kenarlari",), "Ozellik": ("kenarlar", "kenar_payi")}
+
+
 def from_dict(data: dict) -> Tasarim:
+    data = {k: v for k, v in data.items() if k not in _LEGACY["Tasarim"] and k != "gecmis"}
     d = _fill(data, "Tasarim")
     d["degiskenler"] = [{**v, "deger": str(v["deger"]), "aciklama": v.get("aciklama", "")} for v in d["degiskenler"]]
     parcalar = []
     for p in d["parcalar"]:
         p = _fill(p, "Parca")
-        p["montaj"] = _fill(p.get("montaj", {}), "Montaj")
+        p["montaj"] = _fill({k: v for k, v in p.get("montaj", {}).items() if k not in _LEGACY["Montaj"]}, "Montaj")
         pans = []
         for pn in p["paneller"]:
             pn = _fill(pn, "Panel")
@@ -163,7 +164,7 @@ def from_dict(data: dict) -> Tasarim:
         p["paneller"] = pans
         parcalar.append(p)
     d["parcalar"] = parcalar
-    d["ozellikler"] = [_fill(o, "Ozellik") for o in d["ozellikler"]]
+    d["ozellikler"] = [_fill({k: v for k, v in o.items() if k not in _LEGACY["Ozellik"]}, "Ozellik") for o in d["ozellikler"]]
     d["icerikler"] = [_fill(i, "Icerik") for i in d["icerikler"]]
     return Tasarim.model_validate(d)
 

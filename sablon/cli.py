@@ -220,7 +220,7 @@ def cmd_cikti(a):
         from .render3d import render
         b = doc.built
         shots = {"urun": doc.images["hero"],
-                 "arka": render(b, fold=1.0, az=145, el=-28, size=(1400, 1000), ss=1 if a.hizli else 2),
+                 "arka": render(b, fold=1.0, az=-35, el=30, flip=True, size=(1400, 1000), ss=1 if a.hizli else 2),
                  "yari_acik": render(b, fold=0.55, az=-30, el=40, size=(1400, 1000), ss=1 if a.hizli else 2),
                  "acinim": doc.images["flat"]}
         for k, im in shots.items():

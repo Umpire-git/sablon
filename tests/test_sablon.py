@@ -13,7 +13,7 @@ from sablon import project as P
 from sablon.checks import run_checks
 from sablon.cli import main
 from sablon.design import from_dict
-from sablon.engine import BuildError, build
+from sablon.engine import BuildError, build, slab_gap
 from sablon.export.document import make_document
 from sablon.export.pdf import MM, write_pdf
 from sablon.expr import ExprError, evaluate
@@ -79,106 +79,121 @@ def test_examples_build_clean(name):
 
 
 @pytest.mark.parametrize("name", EXAMPLES)
-def test_flat_pieces_have_fold_allowance(name):
+def test_examples_are_stitchless_leather(name):
+    d = load(name)
+    assert d["malzeme"] in ("vaketa", "crazy_horse")
+    assert all(o["tip"] not in ("dikis", "dikis_cizgisi") for o in d["ozellikler"])
+    b = build(design(name))
+    assert not [m for p in b.panels.values() for m in p.marks if m.kind.value == "stitch"]
+
+
+@pytest.mark.parametrize("name", EXAMPLES)
+def test_fold_allowance_matches_bend(name):
     b = build(design(name))
     for p in b.panels.values():
         if p.parent:
-            assert p.allow == pytest.approx(math.radians(abs(p.angle)) * p.t / 2)
+            assert p.allow == pytest.approx(math.radians(abs(p.angle)) * (p.bend_r + p.t / 2))
 
 
-def test_folded_box_is_closed_box():
-    b = build(design("karton_kutu"))
-    w, h, d = b.finished_size()
-    t = b.env["t"]
-    assert sorted((w, h, d)) == pytest.approx(sorted((120 + 2 * t + t, 80 + t + t, 40 + t + t)), abs=1.5)
+def test_stitch_features_rejected():
+    d = load("vidali_kartlik")
+    d["ozellikler"].append({"tip": "dikis", "panel": "on"})
+    with pytest.raises(Exception):
+        from_dict(d)
 
 
 # --- katlama-farkındalıklı özellikler ------------------------------------------------
-def test_snap_counterpart_lands_on_front_pocket_when_folded():
+def test_snap_counterpart_touches_front_when_folded():
     b = build(design("kapakli_citcitli_kartlik"))
     s = b.snaps[0]
     assert s.src == "kapak" and s.dst == "on"
-    w_src = b.world("kapak", s.src_xy)
-    w_dst = b.world("on", s.dst_xy)
-    assert np.allclose(w_src[:2], w_dst[:2], atol=1e-6)  # katlı hâlde üst üste
-    assert s.gap > 0
+    assert np.allclose(b.world("kapak", s.src_xy)[:2], b.world("on", s.dst_xy)[:2], atol=1e-6)
+    assert -0.2 <= s.gap <= 1.0  # kapak ön panele oturuyor
 
 
-def test_side_stitch_holes_match_through_fold():
-    b = build(design("kapakli_citcitli_kartlik"))
-    on = [m.prim for m in b.panels["on"].marks if m.kind == Kind.STITCH]
-    arka = [m.prim for m in b.panels["arka"].marks if m.kind == Kind.STITCH]
-    assert len(on) == len(arka) > 10
-    W = [tuple(np.round(b.world("on", (c.cx, c.cy))[:2], 6)) for c in on]
-    A = [tuple(np.round(b.world("arka", (c.cx, c.cy))[:2], 6)) for c in arka]
-    assert sorted(W) == sorted(A)
-
-
-def test_lock_slits_cut_on_back_panel_only():
+def test_lock_heads_pass_through_slits():
     b = build(design("dikissiz_kilitli_kartlik"))
-    slits_back = [m for m in b.panels["arka"].marks if m.kind == Kind.SLIT]
-    slits_neck = [m for m in b.panels["boyun_sol"].marks if m.kind == Kind.SLIT]
-    assert len(slits_back) == 2 and not slits_neck
-    for m in slits_back:
-        assert 0 < m.prim.y0 < b.panels["arka"].h
+    slits = [m for m in b.panels["arka"].marks if m.kind == Kind.SLIT]
+    assert len(slits) == 2 and not [m for m in b.panels["boyun_sol"].marks if m.kind == Kind.SLIT]
+    arka = b.panels["arka"]
+    for head in ("kafa_sol", "kafa_sag"):
+        h = b.panels[head]
+        assert h.through != 0
+        # kafa, arka panelin İÇ yüzünün üstünde (yarıktan geçmiş): tüm köşeleri z ≥ 0 (arka yerelinde)
+        for (x, y) in h.quad:
+            for z in (0.0, -h.t):
+                q = b.to_local("arka", b.world(head, (x, y), z))
+                assert q[2] >= -1e-6
 
 
-def test_tiered_pockets_share_holes():
-    b = build(design("kademeli_cepli_kartlik"))
-    body = [(m.prim.cx, m.prim.cy) for m in b.panels["govde_p"].marks if m.kind == Kind.STITCH]
-    for i in range(len(body)):
-        for j in range(i + 1, len(body)):
-            assert math.dist(body[i], body[j]) > 0.6 * 3.85 - 1e-6
-    front = [(m.prim.cx, m.prim.cy) for m in b.panels["cep_on_p"].marks if m.kind == Kind.STITCH]
-    assert all(any(math.dist(q, p) < 0.01 for p in body) for q in front)
+def test_chicago_screws_join_touching_layers():
+    b = build(design("vidali_kartlik"))
+    assert len(b.fasteners) == 2
+    for f in b.fasteners:
+        assert f["layers"] == [f["panel"], "on"]
+        assert abs(slab_gap(b, f["panel"], f["xy"], "on")) < 0.3
 
 
-# --- kontroller ----------------------------------------------------------------------
-def test_narrow_pocket_is_error():
+# --- hatalı üretimleri yakalama -------------------------------------------------------------
+def codes(d):
+    try:
+        return {f.code for f in run_checks(build(from_dict(d)))}
+    except BuildError as e:
+        return {f.code for f in e.findings}
+
+
+def test_short_flap_spine_fails_assembly():
     d = load("kapakli_citcitli_kartlik")
     for v in d["degiskenler"]:
-        if v["ad"] == "W":
-            v["deger"] = "kart_g + 2*e + 1"
-    codes = {f.code for f in run_checks(build(from_dict(d)))}
-    assert "cep_dar" in codes
+        if v["ad"] == "sirt":
+            v["deger"] = "g - 2"
+    assert "montaj_carpisma" in codes(d)
+
+
+def test_thin_gusset_cards_do_not_fit():
+    d = load("vidali_kartlik")
+    for v in d["degiskenler"]:
+        if v["ad"] == "g":
+            v["deger"] = "1"
+    assert "hacim_yetersiz" in codes(d)
+
+
+def test_screw_layers_not_touching():
+    d = load("vidali_kartlik")
+    for pn in d["parcalar"][0]["paneller"]:
+        if pn["id"].startswith("duvar"):
+            pn["yukseklik"] = "g + 6"
+    assert "kat_bosluk" in codes(d)
+
+
+def test_lock_head_too_narrow():
+    d = load("dikissiz_kilitli_kartlik")
+    for pn in d["parcalar"][0]["paneller"]:
+        if pn["id"].startswith("kafa"):
+            pn["genislik"] = "boyun + t + 0.5"
+    assert "kilit_tutmaz" in codes(d)
 
 
 def test_snap_into_void_is_error():
     d = load("kapakli_citcitli_kartlik")
-    d["parcalar"][0]["paneller"][3]["yukseklik"] = "H*1.6"  # gövdeden uzun kapak
-    d["ozellikler"][1]["y"] = "H*1.5"  # çıtçıt, kapanınca gövdenin dışına (boşluğa) düşer
-    with pytest.raises(BuildError) as e:
-        build(from_dict(d))
-    assert any(f.code == "karsilik_yok" for f in e.value.findings)
+    for pn in d["parcalar"][0]["paneller"]:
+        if pn["id"] == "kapak":
+            pn["yukseklik"] = "Hb*1.8"
+    d["ozellikler"][2]["y"] = "Hb*1.7"
+    assert "karsilik_yok" in codes(d)
 
 
 def test_flat_overlap_detected():
     d = load("kapakli_citcitli_kartlik")
     d["parcalar"][0]["paneller"].append({"id": "kapak2", "ad": "ikinci kapak", "ebeveyn": "sirt", "kenar": "ust",
                                          "genislik": "30", "ofset": "10", "yukseklik": "20", "aci": "90"})
-    with pytest.raises(BuildError) as e:
-        build(from_dict(d))
-    assert any(f.code == "acinim_cakisma" for f in e.value.findings)
-
-
-def test_snap_gap_warning():
-    d = load("kapakli_citcitli_kartlik")
-    d["ozellikler"][1]["y"] = "4"  # menteşeye yakın: altında sırt boşluğu var, kapanmaz
-    assert "citcit_bosluk" in {f.code for f in run_checks(build(from_dict(d)))}
+    assert "acinim_cakisma" in codes(d)
 
 
 def test_soft_leather_lock_warning():
     d = load("dikissiz_kilitli_kartlik")
     d["malzeme"] = "crazy_horse"
-    assert "kilit_yumusak" in {f.code for f in run_checks(build(from_dict(d)))}
-
-
-def test_tiered_pocket_hole_conflict_warning():
-    d = load("kademeli_cepli_kartlik")
-    for v in d["degiskenler"]:
-        if v["ad"] == "h2":
-            v["deger"] = "r + e + 7*p + 1.5"
-    assert "delik_cakisma" in {f.code for f in run_checks(build(from_dict(d)))}
+    assert "kilit_yumusak" in codes(d)
 
 
 # --- çıktı --------------------------------------------------------------------------------
@@ -197,7 +212,7 @@ def test_pdf_page_sizes(tmp_path, doc, paper, size):
         assert float(page.mediabox.width) == pytest.approx(size[0] * MM, abs=0.01)
         assert float(page.mediabox.height) == pytest.approx(size[1] * MM, abs=0.01)
     text = "".join(p.extract_text() for p in r.pages)
-    assert "Yapım aşamaları" in text and "Malzeme listesi" in text
+    assert "Yapım aşamaları" in text and "Malzeme listesi" in text and "GEREKMEZ" in text
 
 
 def test_full_pdf_is_true_scale(tmp_path, doc):
@@ -210,22 +225,29 @@ def test_full_pdf_is_true_scale(tmp_path, doc):
 
 def test_instructions_order(doc):
     titles = [s.title for s in doc.instructions.steps]
-    assert titles.index("Donanım (çıtçıt / mıknatıs)") < titles.index("Katlama 1") < titles.index("Katlı hâlde dikiş (1)")
+    assert titles.index("Kenar bitirme (katlamadan önce)") < titles.index("Çıtçıtlar") < titles.index("Katlama 1")
+    assert titles.index("Katlama 2") < titles.index("Kilitleme") < titles.index("Şekillendirme")
+
+
+def test_render_is_image(doc):
+    im = doc.images["hero"]
+    assert im.size == (900, 650)
+    arr = np.asarray(im)
+    assert arr.std() > 10  # boş değil
 
 
 # --- proje / CLI -----------------------------------------------------------------------
 def test_cli_flow(tmp_path, capsys):
     pj = str(tmp_path / "p.json")
-    main(["yeni", "kademeli_cepli_kartlik", "-o", pj])
-    main(["ayarla", pj, "e=4", "govde_p.kose.sol_alt=8"])
+    main(["yeni", "vidali_kartlik", "-o", pj])
+    main(["ayarla", pj, "kart_adet=5", "arka.kose.sol_ust=6"])
     d, hist = P.load(pj)
-    assert any(v.ad == "e" and v.deger == "4" for v in d.degiskenler)
+    assert any(v.ad == "kart_adet" and v.deger == "5" for v in d.degiskenler)
     assert len(hist) == 2
     main(["cikti", pj, "-d", str(tmp_path / "o"), "--bicim", "svg,dxf,3b", "--hizli"])
-    files = sorted(os.listdir(tmp_path / "o"))
-    assert files == ["p.dxf", "p.svg", "p_3B.html"]
+    assert sorted(os.listdir(tmp_path / "o")) == ["p.dxf", "p.svg", "p_3B.html"]
     html = (tmp_path / "o" / "p_3B.html").read_text(encoding="utf-8")
-    assert "three" in html and "govde_p" in html
+    assert "three" in html and "kanat_sol" in html
 
 
 # --- Claude akışı (sahte istemci) ------------------------------------------------------------
@@ -301,5 +323,5 @@ def test_revise_returns_diffable_design():
     new.icerikler[0].adet = 4
     rev = ai.Revizyon(anlasilan="daha ince", degisiklikler=["kart 4"], soru="", tasarim=new)
     r, out, findings = ai.revise(d, "biraz daha ince olsun", client=FakeClient(rev))
-    assert "~ değişken kart_adet: 6 → 4" in P.diff(d, out)
+    assert "~ değişken kart_adet: 5 → 4" in P.diff(d, out)
     assert not [f for f in findings if f.level == "hata"]
