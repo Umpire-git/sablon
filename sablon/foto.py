@@ -63,6 +63,7 @@ def scene_data(b: Built, fold=1.0, az=-35.0, el=32.0, flip=False, size=(1600, 12
         "P": P.ravel().round(4).tolist(), "N": N.ravel().round(4).tolist(),
         "UV": np.stack(mesh.UV).ravel().round(3).tolist(), "M": [int(m) for m in mesh.M],
         "base": _hex(b.design.renk), "crazy": b.design.malzeme == "crazy_horse",
+        "accent": _hex(next((pt.renk for pt in b.parts.values() if getattr(pt, "renk", "")), b.design.renk)),
         "floor": [0.62, 0.58, 0.53], "zmin": float(allp[:, 2].min()), "ctr": ctr.tolist(),
         "radius": rad, "eye": eye.tolist(), "size": list(size),
         "doku": os.path.abspath(doku) if doku else os.environ.get("SABLON_DOKU", ""),

@@ -94,3 +94,27 @@ Kapak arka panelin üstünden kartları örtüyorsa şerit ucu üstten çıkamaz
 - Yuva arka panelin üst kenarından ~8 mm aşağıda; tutma ucu arka panelin üstünden ≥12 mm taşacak boyda (~26 mm).
 - Arka panel kartlardan 2–3 mm uzun; kartların görünmesi için şerit kökünün üst perçini yeterince yüksek olmalı.
 - Kapaklı tasarımlarda kapağın kenarına profil verilecekse o kenara panel bağlanmamalı (profil yalnız serbest kenarda).
+
+
+## İnce, düz katlanan kuruluş (tercih edilen; referans kalıpların dili)
+Körük/kutu yerine düz katlanan, 1.0–1.2 mm sert deriden ince ürünler daha çok satar. Doğrulanmış örnekler:
+hazir_modeller/01_origami_kemer.json, 02_para_kemerli_cakil.json, 03_ok_uclu_kapak.json.
+- Ön panel arka panelin `alt` kenarına `aci` "180" ve `kivrim_yaricapi` "g/2" ile bağlanır: alt kenar yuvarlak bir
+  kat olur, körük gerekmez. g = kart yığını + 2*ts (şerit) + t (içeri giren kulak kafası).
+- Yan kapama: ön panelin yanlarından `aci` 90, yüksekliği "g" olan dar duvar → `aci` 90 kulak boynu (arka yüzün
+  dışına yatar) → `yariktan_gecer` kanca kafa (profil `sivri` 3) arka paneldeki kilit_yarigi'na girer. Metal yok.
+- Kenar profilleri: `dalga` (ortada yumuşak başparmak çukuru), `kavis` eksi ölçü = içbükey kenar (ok uçlu kapak için
+  `daralma` + yanlarda kavis -3 + uçta kavis +6).
+- `kavisli_yarik`: yay biçimli kesik (hilal/mercek süsleri); uçlarına otomatik yırtılma deliği konur.
+- Parçaya `renk` verilebilir: kontrast renkli çekme şeridi (ör. #3a2418) ürünün imzası olur.
+
+### Perçinsiz (örgülü) çekme şeridi
+- Şerit parçası taşıyıcı panelin DIŞ yüzüne monte edilir (`yuz` "dis"); kök panel ("kemer") dışarıda görünen kısımdır.
+- Kemerin `ust` kenarına `yariktan_gecer` T başı (eni şerit + 6, kemerin üst yarığından içeri girip kilitlenir),
+  `alt` kenarına `yariktan_gecer`, `aci` 0 içeri dalan koşu (eni şerit eni; kilit değil kayar geçiş) bağlanır.
+  Kemerin y=0 ve y=boyu konumlarına iki kilit_yarigi (genislik sw + ts, hedef taşıyıcı panel).
+- Koşunun ucuna `aci` 180, `kivrim_yaricapi` ru = (g − 2*ts)/2 kol bağlanır; kol karşı panelin içinden yükselir.
+- Dayanak kemerin ALT yarığıdır: kalkış ≈ alt yarık y − 6 − kart y. Görünürlük ≥ 15 mm için alt yarık ~25 mm'de.
+- Kemer arka yüzdeyse altına katlı banknot konur (içerik paneli = kemer): şerit çekildikçe kemer gerilip parayı tutar.
+- Kapaklı modelde kapak çıtçıtı önde görünen kemere oturur (içeride orada şerit yoktur); kol arka yüzdeki şerit
+  yuvasından dışarı çıkar (bkz. kapaklı çekme şeridi).

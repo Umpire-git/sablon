@@ -68,8 +68,16 @@ def make(b: Built) -> Instructions:
     fold_levels = sorted({p.spec.kat_sirasi for p in b.panels.values() if p.parent and p.spec.kat_sirasi})
 
     # --- malzeme listesi
-    area = sum(b.area_cm2(pid) * part.adet for pid, part in b.parts.items())
-    bom = [(f"{mat.ad}, {t:g} mm", f"≈ {area * 1.3 / 100:.1f} dm² (%30 fire dahil) ≈ {area * 1.3 / 929:.2f} ft²")]
+    groups: dict = {}
+    for pid, part in b.parts.items():
+        key = (round(b.part_t[pid], 2), getattr(part, "renk", "") or "")
+        groups[key] = groups.get(key, 0.0) + b.area_cm2(pid) * part.adet
+    bom = []
+    for (pt, renk), area in sorted(groups.items(), key=lambda kv: (kv[0][1] != "", -kv[0][0])):
+        names = ", ".join((pa.ad or k) for k, pa in b.parts.items()
+                          if (round(b.part_t[k], 2), getattr(pa, "renk", "") or "") == (pt, renk))
+        label = f"{mat.ad}, {pt:g} mm" + (f" — kontrast renk ({renk})" if renk else "") + (f" [{names}]" if len(groups) > 1 else "")
+        bom.append((label, f"≈ {area * 1.3 / 100:.1f} dm² (%30 fire dahil) ≈ {area * 1.3 / 929:.2f} ft²"))
     by_size: dict = {}
     for s in snaps:
         by_size[s.size] = by_size.get(s.size, 0) + 1
@@ -124,6 +132,9 @@ def make(b: Built) -> Instructions:
            "(delik, yarığın yırtılmasını durdurur)."]
     if has("oval_delik") or has("pencere"):
         cut.append("Oval yuva / pencere köşelerini önce yuvarlak zımbayla açıp aradaki düzlükleri bıçakla birleştirin.")
+    if b.locks:
+        cut.append("Kulak/kemer yarıklarını kesmeden önce: dış hattı kesip parçayı katlayın, kalıptaki yarık yerlerinin "
+                   "kendi derinizde tuttuğunu görün. Kalıp 1.2 mm sert vakete göredir; deri farklıysa yerleri 1–2 mm kaydırın.")
     cut += ["Sonra dış hattı cetvel boyunca, bıçağı dik tutarak tek seferde kesin; kavislerde bıçağı kaldırmadan dönün.",
             "Kat çizgilerini süet yüze kurşun kalemle işaretleyin."]
     steps.append(Step("Kesim", cut))
@@ -145,9 +156,12 @@ def make(b: Built) -> Instructions:
         for s in snaps:
             src = _name(b, s.src)
             dst = _name(b, s.dst) if s.dst else "?"
+            thr = f" ve altındaki '{_name(b, s.through_host)}' panelinden birlikte geçerek" if s.through_host else ""
             txt.append(f"Ç{s.no} ({M.SNAPS[s.size].ad}): şapka + dişi '{src}' paneline (şapka "
-                       f"{'damar/dış' if s.src_side < 0 else 'süet/iç'} yüzde); erkek + dikme '{dst}' paneline "
+                       f"{'damar/dış' if s.src_side < 0 else 'süet/iç'} yüzde); erkek + dikme '{dst}' paneline{thr} "
                        f"(erkek {'damar/dış' if s.dst_side < 0 else 'süet/iç'} yüzde).")
+        if any(s.through_host for s in snaps):
+            txt.append("Kemerin üstündeki çıtçıtı şerit örüldükten sonra çakın: dikme kemeri panele de sabitler.")
         txt.append("Çıtçıtları deri düzken çakın: katlandıktan sonra arka tarafa ulaşılamaz.")
         if not mat.sert:
             txt.append("Yumuşak deride dikmenin arkasına takviye pulu koyun.")
@@ -169,11 +183,36 @@ def make(b: Built) -> Instructions:
         steps.append(Step(title, txt))
 
     fastener_step([i for i, lv in enumerate(fast_level) if lv == 0])
-    lock_necks = {lk["neck"] for lk in b.locks}
+    # örgülü şerit: kök panel (kemer) taşıyıcı panelin yarıklarından geçer
+    woven = {}
+    for part_id, root in b.roots.items():
+        rp = b.panels[root]
+        if rp.mount is None or not rp.mount.ana_panel:
+            continue
+        if any(lk["neck"] == root for lk in b.locks):
+            woven[root] = part_id
+    woven_kids = {q.id for q in b.panels.values() if q.parent in woven}
+    for root, part_id in woven.items():
+        rp = b.panels[root]
+        host = _name(b, rp.mount.ana_panel)
+        side = "dış" if rp.mount.yuz == "dis" else "iç"
+        cash = [c for c in b.contents if c.panel == root]
+        txt = [f"{b.parts[part_id].ad or part_id}: T başlı ucu '{host}' panelinin {side} yüzünden ÜST yarığa sokun; "
+               "T başını uzunlamasına hafifçe bükerek içeri geçirin, içeride düzeltin (geri çıkmaz).",
+               f"Şeridin uzun ucunu ALT yarıktan içeri geçirin: iki yarık arasında {rp.h:.0f} mm'lik kemer dışarıda kalır. "
+               "Şerit perçinsiz, yarıklarla tutunur; çekildikçe kemer gerilir.",
+               "Şerit alt yarıkta serbestçe kaymalı; sıkıysa yarık uçlarını 1 mm uzatın."]
+        if cash:
+            txt.append("Katlanmış banknotlar daha sonra bu kemerin altına kaydırılacak.")
+        at = next((i for i, st in enumerate(steps) if st.title == "Çıtçıtlar"), len(steps))
+        steps.insert(at, Step("Şeridi örün", txt))
+    lock_necks = {lk["neck"] for lk in b.locks if lk["neck"] not in woven}
     for lv in fold_levels:
         group = [p for p in b.panels.values() if p.parent and p.spec.kat_sirasi == lv]
         folding = [p for p in group if abs(p.angle) > 1]
-        passing = {lk["neck"] for lk in b.locks if lk.get("gecis")}
+        passing = {lk["neck"] for lk in b.locks if lk.get("gecis") and lk["neck"] not in woven}
+        group = [p for p in group if p.id not in woven_kids]
+        folding = [p for p in group if abs(p.angle) > 1]
         slides = [p for p in group if p.spec.yariktan_gecer and p.parent in passing]
         heads = [p for p in group if p.spec.yariktan_gecer and p.parent not in passing]
         txt = []
@@ -181,8 +220,10 @@ def make(b: Built) -> Instructions:
             names = ", ".join(sorted({_name(b, p.id) for p in folding}))
             kinds = " / ".join(sorted({"vadi" if p.angle > 0 else "dağ" for p in folding}))
             txt.append(f"Katlanan paneller: {names} ({kinds} kat, {', '.join(sorted({f'{abs(p.angle):.0f}°' for p in folding}))}).")
+        if any(abs(p.angle) >= 150 and p.bend_r > 2 * p.t and p.part not in woven.values() for p in folding):
+            txt.append("180° katı keskin bastırmayın: içine kartlar ve şerit girecek, yuvarlak (kartlar kalınlığında) kalmalı.")
         if any(p.id in lock_necks for p in folding):
-            txt.append("Dil boyunlarını gövdenin altından geçirerek yarıkların hizasına getirin.")
+            txt.append("Kulak/dil boyunlarını kenarın etrafından karşı panelin dış yüzüne yatırıp yarıkların hizasına getirin.")
         if slides:
             txt.append("Şeridin ucunu içeriden şerit yuvasına sokup dışarı çekin; uç yuvada serbestçe kaymalı. Sıkıysa "
                        "yuvanın iki ucunu 1 mm uzatın, kenarlarını kenar boyasıyla mühürleyin.")
@@ -207,15 +248,24 @@ def make(b: Built) -> Instructions:
     steps.append(Step("Son işlem", [mat.son_islem], {"fold": 1.0, "caption": "Bitmiş ürün"}))
     from .checks import pull_fold, pull_strip_data
     for d in pull_strip_data(b):
-        steps.append(Step("Kullanım: çekme şeridi", [
-            f"Gövdenin altından taşan şerit ucunu tutup aşağı doğru çekin: şerit U kıvrımından makara gibi döner, "
-            f"kartlar yaklaşık {d['lift']:.0f} mm yükselir ve üstten {d['visible']:.0f} mm görünür.",
-            "Kartları elle geri ittiğinizde şerit de eski yerine döner.",
-            "Şerit ucunu birkaç kez çekip bırakarak deriyi alıştırın; ilk günlerde biraz sert gelmesi normaldir.",
-        ], {"fold": pull_fold(b), "pull": 1.0, "caption": "Şerit çekilmiş: kartlar yükseldi"}))
+        flap = any(v == 0.0 for v in pull_fold(b).values())
+        where = "arka yüzdeki" if d["pass"] else "üstten taşan"
+        use = ([("Çıtçıtı açıp kapağı kaldırın. " if snaps else "Kapağı açın. ")] if flap else [])
+        use += [f"{where[0].upper() + where[1:]} şerit ucunu tutup yukarı doğru çekin: şerit kartların altında makara gibi "
+                f"döner, kartlar yaklaşık {d['lift']:.0f} mm yükselir ve üstten {d['visible']:.0f} mm görünür.",
+                "Kartları elle geri ittiğinizde şerit de eski yerine döner.",
+                "Şerit ucunu birkaç kez çekip bırakarak deriyi alıştırın; ilk günlerde biraz sert gelmesi normaldir."]
+        for c in b.contents:
+            if c.outer:
+                use.append("Katlanmış banknotları (ikiye, sonra bir daha ikiye) arka yüzdeki kemerin altına kaydırın; "
+                           "şerit çekildikçe kemer gerilip parayı daha sıkı tutar.")
+        steps.append(Step("Kullanım: çekme şeridi", use,
+                          {"fold": pull_fold(b), "pull": 1.0, "caption": "Şerit çekilmiş: kartlar yükseldi"}))
 
     n_feat = len(b.locks) + len(snaps) + len(b.fasteners)
-    score = 1 + (len(fold_levels) > 2) + (len(b.locks) > 0) + (n_feat > 3) + (len(b.parts) > 1)
+    real_locks = [lk for lk in b.locks if not lk.get("gecis")]
+    score = (1 + (len(fold_levels) > 3) + (len(real_locks) > 0) + (len(snaps) + len(b.fasteners) > 2)
+             + (len(b.parts) > 2) + (len(real_locks) > 4))
     difficulty = max(1, min(5, score))
     hours = 0.75 + 0.2 * len(fold_levels) + 0.15 * n_feat + 0.3 * len(b.parts)
     return Instructions(bom, tools, steps, difficulty, round(hours * 2) / 2)

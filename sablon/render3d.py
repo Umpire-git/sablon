@@ -19,6 +19,14 @@ from .pattern import Kind
 
 # malzeme kimlikleri
 LEATHER, EDGE, BENDM, METAL, CARD_TOP, CARD_SIDE, DARK = 1, 2, 3, 4, 5, 6, 7
+ACCENT = {LEATHER: 8, EDGE: 9, BENDM: 10}
+BILL = 11  # banknot yüzü  # ayrı renkli parça (ör. kontrast şerit) malzemeleri
+
+
+def _accent(mesh, start):
+    """start'tan sonra eklenen üçgenleri ayrı renkli parça malzemesine taşır (Blender için)."""
+    for i in range(start, len(mesh.M)):
+        mesh.M[i] = ACCENT.get(mesh.M[i], mesh.M[i])
 
 
 def _hex(c: str, default=(0.62, 0.38, 0.2)):
@@ -349,30 +357,49 @@ def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=
     fill = dict(fillers)
     edge_col = tuple(v * 0.55 for v in base)
     softs = {}
+    # dış yüzüne parça monte edilen ve monte şerit parçaları düz kalır (kabarıklık ince şeridi örtmesin)
+    hosts = {b.panels[r].mount.ana_panel for r in b.roots.values()
+             if b.panels[r].mount is not None and b.panels[r].mount.ana_panel}
+    mounted_parts = {pt for pt, r in b.roots.items() if b.panels[r].mount is not None and b.panels[r].mount.ana_panel}
     for i, pid in enumerate(b.order):
         p = b.panels[pid]
-        if soft:
+        if soft and (pid in hosts or p.part in mounted_parts):
+            softs[pid] = Soft(p.poly, 0.0, 0)
+        elif soft:
             k = 1.3 if b.design.malzeme == "crazy_horse" else 1.0
             amp = min(1.1, 0.0125 * max(p.w, p.h)) * k * min(1.0, min(p.w, p.h) / 20.0) if max(p.w, p.h) > 10 else 0.0
             softs[pid] = Soft(p.poly, amp, seed=i * 7 + 3)
         else:
             softs[pid] = Soft(p.poly, 0.0, 0)
+    pcol = {pid: (_hex(b.parts[p.part].renk) if getattr(b.parts.get(p.part), "renk", "") else None)
+            for pid, p in b.panels.items()}
     for pid in b.order:
         p = b.panels[pid]
-        _slab(mesh, p.poly, mats[pid], -p.t, 0.0, base, LEATHER, EDGE, edge_col,
+        n0 = len(mesh.M)
+        col = pcol[pid] or base
+        _slab(mesh, p.poly, mats[pid], -p.t, 0.0, col, LEATHER, EDGE, tuple(c * 0.45 for c in col) if pcol[pid] else edge_col,
               soft=softs[pid], round_r=min(0.45 * p.t, 0.8) if soft else 0.0,
               flat_edges=_hinge_test(b, p) if soft else None, maxlen=5.0 if soft else 1e9)
+        if pcol[pid]:
+            _accent(mesh, n0)
+        n0 = len(mesh.M)
+        col = pcol[pid] or base
         if p.parent:
-            _bend(mesh, b, pid, fold, base, mats, shift=bend_shift.get(pid))
+            _bend(mesh, b, pid, fold, col, mats, shift=bend_shift.get(pid))
         if pid in fill:  # çekilince açılan şerit boşluğu (U–kol ya da yuva–uç arası)
             dl = fill[pid]
             x0, x1 = p.hinge_x
-            _slab(mesh, [(x0, -dl), (x1, -dl), (x1, 0.0), (x0, 0.0)], mats[pid], -p.t, 0.0, base, LEATHER, EDGE, edge_col)
+            _slab(mesh, [(x0, -dl), (x1, -dl), (x1, 0.0), (x0, 0.0)], mats[pid], -p.t, 0.0, col, LEATHER, EDGE,
+                  tuple(c * 0.45 for c in col) if pcol[pid] else edge_col)
+        if pcol[pid]:
+            _accent(mesh, n0)
         for mk in p.marks:
             if mk.kind == Kind.SLIT:
-                dz = float(softs[pid].dz((mk.prim.x0 + mk.prim.x1) / 2, (mk.prim.y0 + mk.prim.y1) / 2))
-                for z in (0.03 + dz, -p.t - 0.03 + dz):
-                    _decal_line(mesh, mats[pid], (mk.prim.x0, mk.prim.y0), (mk.prim.x1, mk.prim.y1), z, 0.7, (0.08, 0.05, 0.03))
+                from .geometry import seg_lines
+                for (x0, y0, x1, y1) in seg_lines(mk.prim):
+                    dz = float(softs[pid].dz((x0 + x1) / 2, (y0 + y1) / 2))
+                    for z in (0.03 + dz, -p.t - 0.03 + dz):
+                        _decal_line(mesh, mats[pid], (x0, y0), (x1, y1), z, 0.7, (0.08, 0.05, 0.03))
             elif mk.kind == Kind.HOLE and mk.prim.r < 2.6:
                 dz = float(softs[pid].dz(mk.prim.cx, mk.prim.cy))
                 for z in (0.03 + dz, -p.t - 0.03 + dz):
@@ -400,8 +427,9 @@ def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=
         for ci, cg in enumerate(b.contents):
             p = b.panels[cg.panel]
             box = discretize(rounded_rect(cg.x, cg.y + content_shift.get(ci, 0.0), cg.w, cg.h, 3.18), 15)
-            z0, z1 = ((-p.t - cg.s, -p.t) if cg.under else (cg.z0 + 0.05, cg.z0 + cg.s))
-            _slab(mesh, box, mats[cg.panel], z0, z1, (0.20, 0.33, 0.55), CARD_TOP, CARD_SIDE, (0.93, 0.93, 0.9))
+            z0, z1 = cg.zrange(p.t) if cg.under else (cg.z0 + 0.05, cg.z0 + cg.s)
+            top = (0.20, 0.33, 0.55) if cg.is_card else (0.80, 0.82, 0.70)  # kart mavi, banknot açık yeşil-krem
+            _slab(mesh, box, mats[cg.panel], z0, z1, top, CARD_TOP if cg.is_card else BILL, CARD_SIDE, (0.93, 0.93, 0.9))
     return mesh
 
 

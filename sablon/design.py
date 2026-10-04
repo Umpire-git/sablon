@@ -36,9 +36,10 @@ class Koseler(BaseModel):
 
 
 class Profil(BaseModel):
-    tip: Literal["duz", "kavis", "sivri", "oyuk", "yuvarlak"] = Field(
-        description="duz; kavis=dışa bombe (olcu=sehim); sivri=zarf ucu (olcu=uç derinliği); "
-                    "oyuk=ortada içe yarım daire başparmak oyuğu (olcu=yarıçap); yuvarlak=tam yarım daire uç")
+    tip: Literal["duz", "kavis", "sivri", "oyuk", "yuvarlak", "dalga"] = Field(
+        description="duz; kavis=dışa bombe (olcu=sehim; eksi olcu içe kavis); sivri=zarf ucu (olcu=uç derinliği); "
+                    "oyuk=ortada içe yarım daire başparmak oyuğu (olcu=yarıçap); yuvarlak=tam yarım daire uç; "
+                    "dalga=ortada yumuşak sığ başparmak çukuru (olcu=derinlik)")
     olcu: str
 
 
@@ -76,15 +77,19 @@ class Parca(BaseModel):
     adet: int
     malzeme: str = Field(description="Malzeme anahtarı; tasarımın varsayılanı için boş")
     kalinlik: str = Field(description="mm; tasarım varsayılanı için boş")
+    renk: str = Field(default="", description="Bu parçanın deri rengi (#rrggbb), ör. kontrast çekme şeridi; boşsa tasarımın rengi")
     montaj: Montaj
     paneller: list[Panel]
 
 
 class Ozellik(BaseModel):
-    tip: Literal["kilit_yarigi", "citcit", "percin", "vida", "yarik", "delik", "oval_delik", "pencere", "logo_alani"] = Field(
+    tip: Literal["kilit_yarigi", "citcit", "percin", "vida", "yarik", "kavisli_yarik", "delik", "oval_delik", "pencere",
+                 "logo_alani"] = Field(
         description="kilit_yarigi: yalnızca HEDEF panelde kesilen yarık (dil boynu geçişi; kaynakta tanımlanır); "
                     "citcit: katlanınca hedefte karşılığı otomatik konur; percin/vida: katlanınca üst üste gelen tüm "
                     "hedef panellerden geçen delik (katları birleştirir); yarik: panelde düz kesik (kart yuvası vb.); "
+                    "kavisli_yarik: yay biçimli kesik (x,y=kiriş ortası, genislik=kiriş, yukseklik=sehim, eksi sehim "
+                    "ters yön, aci=döndürme), uçlarında yırtılma deliği; "
                     "delik: anahtar halkası vb.; oval_delik: kayış yuvası; pencere: iç kesim; logo_alani: damga alanı")
     panel: str
     x: str = Field(description="Merkez (yarik/kilit_yarigi için başlangıç noktası) x")
@@ -129,7 +134,7 @@ _DEFAULTS = {
               "koseler": {"sol_alt": "0", "sag_alt": "0", "sag_ust": "0", "sol_ust": "0"},
               "profil_ust": _DUZ, "profil_sol": _DUZ, "profil_sag": _DUZ, "ad": ""},
     "Montaj": {"ana_panel": "", "x": "0", "y": "0", "yuz": "ic"},
-    "Parca": {"adet": 1, "malzeme": "", "kalinlik": "", "ad": ""},
+    "Parca": {"adet": 1, "malzeme": "", "kalinlik": "", "ad": "", "renk": ""},
     "Ozellik": {"x": "", "y": "", "genislik": "", "yukseklik": "", "aci": "", "boyut": "", "hedefler": [], "etiket": ""},
     "Icerik": {"x": "", "y": "", "genislik": "", "yukseklik": "", "kalinlik": "", "adet": 1},
     "Tasarim": {"konsept": "", "kategori": "", "renk": "", "degiskenler": [], "ozellikler": [], "icerikler": [],

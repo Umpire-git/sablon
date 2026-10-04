@@ -106,6 +106,20 @@ class ContentGeo:
     s: float          # yığın kalınlığı
     under: bool       # True: monte cep panelinin altında (cep içinde)
     z0: float = 0.0   # içeriğin oturduğu yükseklik (altına giren katlar, ör. kilit kafası)
+    outer: bool = False  # dış yüze monte kemerin altında (kemer ile taşıyıcı panel arasında)
+
+    @property
+    def is_card(self) -> bool:
+        """Kart mı (görselde mavi), yoksa banknot/özel içerik mi."""
+        return self.spec.tip == "kart" or any(abs(v - 85.6) < 1 for v in (self.w, self.h))
+
+    def zrange(self, t: float) -> tuple[float, float]:
+        """İçeriğin, oturduğu panelin yerel z'sindeki aralığı."""
+        if self.outer:
+            return (0.0, self.s)
+        if self.under:
+            return (-t - self.s, -t)
+        return (self.z0, self.z0 + self.s)
 
 
 @dataclass
@@ -120,6 +134,7 @@ class SnapPair:
     gap: float
     src_side: int = -1   # +1: iç yüz, -1: dış yüz (şapkanın görüneceği yüz)
     dst_side: int = 1    # erkek parçanın oturduğu yüz
+    through_host: str = ""  # erkek monte bir kemerdeyse dikmenin de geçtiği taşıyıcı panel
 
 
 @dataclass
@@ -321,12 +336,18 @@ def panel_outline(w, h, taper, corners, profiles: dict, env, where, findings) ->
         except ExprError as ex:
             findings.append(Finding("hata", "ifade", f"{where} {name} profili: {ex}", where))
             val = 0.0
-        if tip == "duz" or (tip != "yuvarlak" and val <= 0):
+        if tip == "duz" or (tip not in ("yuvarlak", "kavis") and val <= 0) or (tip == "kavis" and val == 0):
+            return
+        if tip == "dalga":  # kenarın ortasında yumuşak, sığ başparmak çukuru (genişlik ≈ derinliğin 7 katı)
+            half = min(L / 2 - 2.0, 3.5 * val + 6.0)
+            add_node((mid[0] - e[0] * half, mid[1] - e[1] * half))
+            arcs[-1] = (mid[0] - out[0] * val, mid[1] - out[1] * val)
+            add_node((mid[0] + e[0] * half, mid[1] + e[1] * half))
             return
         if tip == "sivri":
             add_node((mid[0] + out[0] * val, mid[1] + out[1] * val))
         elif tip in ("kavis", "yuvarlak"):
-            d = L / 2 if tip == "yuvarlak" else min(val, L / 2)
+            d = L / 2 if tip == "yuvarlak" else max(-L / 2, min(val, L / 2))  # kavis < 0: içbükey
             arcs[-1] = (mid[0] + out[0] * d, mid[1] + out[1] * d)
         elif tip == "oyuk":
             r = min(val, L / 2 - 1.0)
@@ -677,7 +698,8 @@ def _mount_and_contents(b: Built, num):
         x = num(ic.x, "icerik.x", (p.w - w) / 2)
         y = num(ic.y, "icerik.y", 0.3)
         under = p.mount is not None and p.mount.ana_panel != "" and p.parent is None
-        b.contents.append(ContentGeo(ic, p.id, x, y, w, h, s, under))
+        b.contents.append(ContentGeo(ic, p.id, x, y, w, h, s, under,
+                                     outer=bool(under and p.mount.yuz == "dis")))
         if under:
             p.lift += s
     placed: dict = {}
@@ -700,7 +722,7 @@ def _mount_and_contents(b: Built, num):
         for (bx, extra) in placed.get(key, []):
             if bx[0] < box[2] and box[0] < bx[2] and bx[1] < box[3] and box[1] < bx[3]:
                 below += extra
-        rp.mount_z = below + rp.t + rp.lift if mt.yuz == "ic" else -host.t - below
+        rp.mount_z = below + rp.t + rp.lift if mt.yuz == "ic" else -host.t - below - rp.lift
         placed.setdefault(key, []).append((box, rp.t + rp.lift))
         if x < -0.01 or y < -0.01 or x + rp.w > host.w + 0.01 or y + rp.h > host.h + 0.01:
             F.append(Finding("uyari", "montaj_tasma", f"'{part_id}' parçası '{host.id}' panelinin dışına taşıyor.", part_id))
@@ -744,6 +766,13 @@ def _features(b: Built, num):
                 back = b.to_local(p.id, b.world(tid, (loc[0], loc[1])))
                 pair.src_side = -1 if back[2] > 0 else 1
                 pair.gap = slab_gap(b, p.id, (x, y), tid)
+                tp_ = b.panels[tid]
+                if tp_.parent is None and tp_.mount is not None and tp_.mount.ana_panel:
+                    # monte şerit/kemer üstündeki çıtçıt: dikme taşıyıcı panelden de geçer
+                    host = b.panels[tp_.mount.ana_panel]
+                    hl = b.to_local(host.id, b.world(tid, (loc[0], loc[1])))
+                    host.marks.append(Mark(Kind.HOLE, Circle(float(hl[0]), float(hl[1]), sn.dikme_delik / 2)))
+                    pair.through_host = host.id
             b.snaps.append(pair)
             continue
 
@@ -774,14 +803,29 @@ def _features(b: Built, num):
                         if len(v) == 2]
                 if not todo:
                     F.append(Finding("hata", "kilit_hedef", f"{where}: kilit yarığı katlanınca hiçbir panele denk gelmiyor."))
+                mid = ((pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2)
                 for tp, _ in todo:
-                    b.locks.append({"neck": p.id, "target": tp.id, "length": L, "where": where})
+                    b.locks.append({"neck": p.id, "target": tp.id, "length": L, "where": where, "mid": mid})
             else:
                 todo = [(p, pts)] + [(b.panels[k], v) for k, v in _group(_through(b, p, pts, targets, where, all_or_nothing=True)).items() if len(v) == 2]
             for tp, (q0, q1) in todo:
                 tp.marks.append(Mark(Kind.SLIT, Line(q0[0], q0[1], q1[0], q1[1])))
                 tp.marks.append(Mark(Kind.HOLE, Circle(q0[0], q0[1], relief / 2)))
                 tp.marks.append(Mark(Kind.HOLE, Circle(q1[0], q1[1], relief / 2)))
+            continue
+
+        if f.tip == "kavisli_yarik":
+            L, sag = num(f.genislik, where, 20.0), num(f.yukseklik, where, 5.0)
+            a = math.radians(num(f.aci, where, 0.0))
+            ca, sa = math.cos(a), math.sin(a)
+            rot = lambda u, v: (x + u * ca - v * sa, y + u * sa + v * ca)
+            p0, pm, p1 = rot(-L / 2, 0.0), rot(0.0, sag), rot(L / 2, 0.0)
+            if abs(sag) < 1e-6:
+                p.marks.append(Mark(Kind.SLIT, Line(p0[0], p0[1], p1[0], p1[1])))
+            else:
+                p.marks.append(Mark(Kind.SLIT, arc_from_3pts(p0, pm, p1)))
+            for q in (p0, p1):
+                p.marks.append(Mark(Kind.HOLE, Circle(q[0], q[1], 0.75)))
             continue
 
         if f.tip in ("oval_delik", "pencere", "logo_alani"):
@@ -801,11 +845,17 @@ def _features(b: Built, num):
             continue
         F.append(Finding("uyari", "ozellik_tip", f"{where}: desteklenmeyen özellik."))
 
+    # her yarıktan geçen kafa: boyunun o yarığa en yakın kenarına bağlı yariktan_gecer paneli
+    for p in b.panels.values():
+        if p.spec.yariktan_gecer:
+            lk = _lock_for_head(b, p)
+            if lk is not None:
+                lk.setdefault("heads", []).append(p.id)
     # geçiş yuvası: monte bir şeridin ucu, kendinden geniş olmayan bir yarıktan geçip kayar (kilit değil)
     for lk in b.locks:
         neck = b.panels[lk["neck"]]
         rp = b.panels[b.roots[neck.part]]
-        heads = [q for q in b.panels.values() if q.parent == neck.id and q.spec.yariktan_gecer]
+        heads = [b.panels[h] for h in lk.get("heads", [])]
         lk["gecis"] = bool(heads and rp.mount is not None and rp.mount.ana_panel
                            and all(h.w <= lk["length"] for h in heads))
 
@@ -813,7 +863,7 @@ def _features(b: Built, num):
     for p in b.panels.values():
         if not p.spec.yariktan_gecer:
             continue
-        lock = next((lk for lk in b.locks if lk["neck"] == p.parent), None)
+        lock = _lock_for_head(b, p)
         if lock is None:
             F.append(Finding("hata", "gecis", f"'{p.id}' yarıktan geçer olarak işaretli ama ebeveyninde kilit_yarigi yok."))
             continue
@@ -826,6 +876,20 @@ def _features(b: Built, num):
         z_out = z_in - rel[2, 2] * tgt.t
         far = z_in if abs(z_in) > abs(z_out) else z_out
         p.through = float(far + p.t) if far > 0 else float(far)
+
+
+def _lock_for_head(b: Built, head: PanelGeo):
+    """Kafanın geçtiği yarık: boyundaki yarıklardan kafanın bağlı olduğu kenara en yakını."""
+    cands = [lk for lk in b.locks if lk["neck"] == head.parent]
+    if len(cands) <= 1:
+        return cands[0] if cands else None
+    neck = b.panels[head.parent]
+    e = head.spec.kenar
+
+    def dist(lk):
+        mx, my = lk.get("mid", (0.0, 0.0))
+        return {"alt": abs(my), "ust": abs(my - neck.h), "sol": abs(mx), "sag": abs(mx - neck.w)}.get(e, 0.0)
+    return min(cands, key=dist)
 
 
 def _settle_contents(b: Built):

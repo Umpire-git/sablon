@@ -97,8 +97,8 @@ görseldeki ürün kalıptan çıkan üründür. Daha yüksek kalite için `SABL
 
 ## Hazır modeller (yapay zekâ gerekmez)
 
-`hazir_modeller/` klasöründe simülasyondan hatasız geçmiş çekme şeritli kartlıklar var:
-Kalkan Kapaklı, Hilal, Dikey Kayışlı, Zırh Kanatlı. `paket.bat`'a çift tıklayın: her model için
+`hazir_modeller/` klasöründe simülasyondan hatasız geçmiş, düz katlanan ince (≈14 mm, 7 kart) çekme şeritli
+kartlıklar var: Origami Kemer, Para Kemerli Çakıl, Ok Uçlu Kapak. Hepsi tek parça gövde + perçinsiz örgülü şerit. `paket.bat`'a çift tıklayın: her model için
 A4/Letter/tam boy PDF kalıp, SVG, DXF, 3B görüntüleyici, ürün görselleri, Etsy metni ve (Blender kuruluysa)
 fotoğraf gerçekliğinde görseller kendi klasörüne üretilir. Tamamen ücretsizdir.
 

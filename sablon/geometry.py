@@ -356,3 +356,11 @@ class Affine2:
             c = self.apply((s.cx, s.cy))
             return Circle(c[0], c[1], s.r)
         raise TypeError(s)
+
+
+def seg_lines(prim, max_deg: float = 8.0) -> list[tuple[float, float, float, float]]:
+    """Doğru ya da yay kesiği kısa doğru parçalarına böler (3B çizim için)."""
+    if isinstance(prim, Line):
+        return [(prim.x0, prim.y0, prim.x1, prim.y1)]
+    pts = discretize([prim], max_deg)
+    return [(a[0], a[1], b[0], b[1]) for a, b in zip(pts, pts[1:])]

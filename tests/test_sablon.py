@@ -707,3 +707,26 @@ def test_ready_models_are_valid(path):
     from sablon.checks import pull_strip_data
     d = pull_strip_data(b)[0]
     assert d["visible"] >= 15 and d["tab"] >= 12
+
+
+def test_flat_construction_features():
+    from sablon.geometry import Arc
+    from sablon.instructions import make
+    b = build(from_dict(json.load(open("hazir_modeller/02_para_kemerli_cakil.json", encoding="utf-8"))))
+    # örgülü şerit: alt yarık kayar geçiş, üst yarık T başı kilidi
+    gecis = {lk["heads"][0]: lk["gecis"] for lk in b.locks if lk["neck"] == "kemer"}
+    assert gecis == {"kosu": True, "t_basi": False}
+    cash = [c for c in b.contents if not c.is_card][0]
+    assert cash.outer and cash.zrange(1.0) == (0.0, cash.s)
+    steps = {s.title: " ".join(s.text) for s in make(b).steps}
+    assert "Şeridi örün" in steps and "yukarı doğru çekin" in steps["Kullanım: çekme şeridi"]
+    w, h, z = b.finished_size()
+    assert z <= 15
+    d = design("dikissiz_kilitli_kartlik")
+    d.ozellikler.append(type(d.ozellikler[0])(tip="kavisli_yarik", panel="arka", x="W/2", y="20", genislik="20",
+                                              yukseklik="5", aci="90", boyut="", hedefler=[], etiket=""))
+    d.parcalar[0].paneller[0].profil_ust.tip = "dalga"
+    d.parcalar[0].paneller[0].profil_ust.olcu = "4"
+    b2 = build(d)
+    assert any(isinstance(m.prim, Arc) and m.kind.value == "slit" for m in b2.panels["arka"].marks)
+    assert not [f for f in run_checks(b2) if f.level == "hata"]

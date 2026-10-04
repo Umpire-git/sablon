@@ -174,6 +174,11 @@ def build(data):
         _principled("kart_kenar", (0.92, 0.92, 0.88), 0.5)[0],                    # 6 CARD_SIDE
         _principled("yarik", (0.02, 0.014, 0.01), 0.9)[0],                        # 7 DARK
     ]
+    acc = tuple(data.get("accent") or base)  # ayrı renkli parça (kontrast şerit)
+    mats += [_leather("deri2", acc, crazy, maps=maps),                           # 8 LEATHER (parça rengi)
+             _principled("kenar2", tuple(c * 0.42 for c in acc), 0.32, coat=0.4)[0],  # 9 EDGE
+             _leather("kivrim2", acc, crazy, bend=True, maps=maps),              # 10 BEND
+             _principled("banknot", (0.62, 0.65, 0.48), 0.8)[0]]                # 11 BILL
     P, N, UV, M = data["P"], data["N"], data["UV"], data["M"]
     nt = len(M)
     verts = [(P[i * 3] * MM, P[i * 3 + 1] * MM, P[i * 3 + 2] * MM) for i in range(nt * 3)]

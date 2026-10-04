@@ -10,6 +10,7 @@ import json
 
 from .checks import pull_fold, pull_strip_data
 from .engine import Built
+from .geometry import seg_lines
 
 
 def scene_json(b: Built) -> dict:
@@ -20,8 +21,8 @@ def scene_json(b: Built) -> dict:
             "id": pid, "ad": p.spec.ad or pid, "parent": p.parent, "o": list(p.hinge_o), "d": list(p.hinge_d),
             "angle": p.angle, "t": p.t, "r": p.bend_r, "hx": list(p.hinge_x), "through": p.through,
             "order": p.spec.kat_sirasi, "poly": [[round(x, 3), round(y, 3)] for x, y in p.poly],
-            "mount": None, "offset": 0.0,
-            "slits": [[m.prim.x0, m.prim.y0, m.prim.x1, m.prim.y1] for m in p.marks if m.kind.value == "slit"],
+            "mount": None, "offset": 0.0, "color": getattr(b.parts.get(p.part), "renk", "") or "",
+            "slits": [list(ln) for m in p.marks if m.kind.value == "slit" for ln in seg_lines(m.prim)],
         }
         if p.parent is None:
             if p.mount is not None and p.mount.ana_panel:
@@ -39,7 +40,8 @@ def scene_json(b: Built) -> dict:
         last = b.panels[f["layers"][-1]]
         loc = b.to_local(last.id, b.world(f["panel"], f["xy"]))
         hw.append({"panel": last.id, "xy": [float(loc[0]), float(loc[1])], "r": r, "side": -1 if loc[2] > 0 else 1, "h": 1.4})
-    contents = [{"panel": c.panel, "x": c.x, "y": c.y, "w": c.w, "h": c.h, "s": c.s, "under": c.under, "z0": c.z0}
+    contents = [{"panel": c.panel, "x": c.x, "y": c.y, "w": c.w, "h": c.h, "s": c.s, "under": c.under, "z0": c.z0,
+                 "zr": list(c.zrange(b.panels[c.panel].t)), "card": c.is_card}
                 for c in b.contents]
     return {"title": b.design.ad, "color": b.design.renk or "#9a5a2e", "crazy": b.design.malzeme == "crazy_horse",
             "nodes": nodes, "hw": hw, "contents": contents,
@@ -114,8 +116,12 @@ const edge = new THREE.MeshStandardMaterial({color:base.clone().multiplyScalar(0
 const bendMat = leather.clone(); if (S.crazy){ bendMat.color = new THREE.Color(1.45,1.35,1.25); }
 const metal = new THREE.MeshStandardMaterial({color:0xd9d2c4, roughness:0.28, metalness:1.0, envMapIntensity:1.2});
 const cardTop = new THREE.MeshPhysicalMaterial({color:0x2f4f86, roughness:0.25, clearcoat:0.8});
+const billTop = new THREE.MeshStandardMaterial({color:0xd3d6b4, roughness:0.85});
 const cardSide = new THREE.MeshStandardMaterial({color:0xf2f1ec, roughness:0.6});
 const slitMat = new THREE.MeshBasicMaterial({color:0x140c06});
+const partMats = {};
+function partMat(c){ if (!partMats[c]){ const m = leather.clone(); m.map = leatherTex(c, S.crazy);
+  partMats[c] = [m, new THREE.MeshStandardMaterial({color:new THREE.Color(c).multiplyScalar(0.45), roughness:0.45})]; } return partMats[c]; }
 const byId = {}; const groups = {}; const bends = {};
 for (const n of S.nodes) byId[n.id] = n;
 function slab(poly, z0, z1, faceMat, sideMat){
@@ -126,7 +132,8 @@ function slab(poly, z0, z1, faceMat, sideMat){
 }
 for (const n of S.nodes){
   const g = new THREE.Group(); g.matrixAutoUpdate = false; groups[n.id] = g; world.add(g);
-  g.add(slab(n.poly, -n.t+0.12, -0.12, leather, edge));
+  const lm = n.color ? partMat(n.color) : [leather, edge];
+  g.add(slab(n.poly, -n.t+0.12, -0.12, lm[0], lm[1]));
   for (const s of n.slits){ const dx=s[2]-s[0], dy=s[3]-s[1], L=Math.hypot(dx,dy);
     for (const z of [0.02, -n.t-0.02]){ const m=new THREE.Mesh(new THREE.PlaneGeometry(L,0.7), slitMat);
       m.position.set((s[0]+s[2])/2,(s[1]+s[3])/2,z); m.rotation.z=Math.atan2(dy,dx); if(z<0) m.rotation.x=Math.PI; g.add(m);} }
@@ -135,7 +142,7 @@ for (const n of S.nodes){
     geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((segs+1)*4*3), 3));
     const idx=[]; for(let k=0;k<segs;k++){ const a=k*4, b=(k+1)*4; idx.push(a,a+1,b+1, a,b+1,b, a+2,b+3,a+3, a+2,b+2,b+3, a,b,b+2, a,b+2,a+2, a+1,a+3,b+3, a+1,b+3,b+1); }
     geo.setIndex(idx);
-    const m = new THREE.Mesh(geo, bendMat); m.castShadow = m.receiveShadow = true; m.matrixAutoUpdate = false;
+    const m = new THREE.Mesh(geo, n.color ? partMat(n.color)[0] : bendMat); m.castShadow = m.receiveShadow = true; m.matrixAutoUpdate = false;
     world.add(m); bends[n.id] = {mesh:m, segs};
   }
 }
@@ -147,14 +154,14 @@ const contentMeshes = [];
 const fillers = {};
 for (const pl of S.pulls) for (const id of (pl.pass.length ? pl.pass : [pl.child])){ const n = byId[id]; const w = n.hx[1]-n.hx[0];
   const g = new THREE.BoxGeometry(w, 1, n.t); g.translate((n.hx[0]+n.hx[1])/2, 0.5, -n.t/2);
-  const m = new THREE.Mesh(g, leather); m.castShadow = m.receiveShadow = true; m.visible = false; groups[id].add(m); fillers[id] = m; }
+  const m = new THREE.Mesh(g, n.color ? partMat(n.color)[0] : leather); m.castShadow = m.receiveShadow = true; m.visible = false; groups[id].add(m); fillers[id] = m; }
 for (const c of S.contents){
-  const t = byId[c.panel].t; const z0 = c.under ? -t - c.s : c.z0 + 0.05, z1 = c.under ? -t : c.z0 + c.s;
+  const t = byId[c.panel].t; const z0 = c.under ? c.zr[0] : c.z0 + 0.05, z1 = c.under ? c.zr[1] : c.z0 + c.s;
   const r=3.18, x=c.x, y=c.y, w=c.w, h=c.h; const sh=new THREE.Shape();
   sh.moveTo(x+r,y); sh.lineTo(x+w-r,y); sh.quadraticCurveTo(x+w,y,x+w,y+r); sh.lineTo(x+w,y+h-r); sh.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
   sh.lineTo(x+r,y+h); sh.quadraticCurveTo(x,y+h,x,y+h-r); sh.lineTo(x,y+r); sh.quadraticCurveTo(x,y,x+r,y);
   const g = new THREE.ExtrudeGeometry(sh,{depth:z1-z0, bevelEnabled:false}); g.translate(0,0,z0);
-  const m = new THREE.Mesh(g,[cardTop, cardSide]); m.castShadow = true; groups[c.panel].add(m); contentMeshes.push(m);
+  const m = new THREE.Mesh(g,[c.card ? cardTop : billTop, cardSide]); m.castShadow = true; groups[c.panel].add(m); contentMeshes.push(m);
 }
 const M4 = THREE.Matrix4, T = (x,y,z)=>new M4().makeTranslation(x,y,z);
 function compute(fold, pullv){
