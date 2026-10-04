@@ -461,3 +461,67 @@ def test_bad_expressions_and_sizes_are_findings_not_crashes():
     d = load("vidali_kartlik")
     d["parcalar"][0]["paneller"][1]["ebeveyn"] = "alt_koruk"  # kendine bağlı
     assert codes(d)  # çökmeden bulgu döner
+
+
+# --- Gemini ile fikir üretimi (sahte istemci) ------------------------------------------------
+class FakeGemini:
+    """generate_content çağrılarını sırayla yanıtlar; bir öğe Exception ise fırlatır."""
+
+    def __init__(self, *answers):
+        self.answers = list(answers)
+        self.calls = []
+        outer = self
+
+        class _Models:
+            def generate_content(self, **kw):
+                outer.calls.append(kw)
+                a = outer.answers.pop(0)
+                if isinstance(a, Exception):
+                    raise a
+                if isinstance(a, str):
+                    return type("R", (), {"parsed": None, "text": a})()
+                return type("R", (), {"parsed": a, "text": a.model_dump_json()})()
+
+        self.models = _Models()
+
+
+def test_gemini_ideas_only_return_buildable_designs():
+    good = design("vidali_kartlik")
+    hopeless = copy.deepcopy(design("dikissiz_kilitli_kartlik"))
+    for pn in hopeless.parcalar[0].paneller:
+        if pn.id.startswith("kafa"):
+            pn.genislik = "boyun"  # kafa yarıktan dar: tutmaz
+    replacement = design("kanat_kilitli_dikey_kartlik")
+    fg = FakeGemini(ai.Fikirler(tasarimlar=[good, hopeless]),
+                    ai.Onarim(tasarim=hopeless, aciklama="denedim"), ai.Onarim(tasarim=hopeless, aciklama="denedim"),
+                    ai.Onarim(tasarim=hopeless, aciklama="denedim"),
+                    ai.Fikirler(tasarimlar=[replacement]))
+    res = ai.ideas("dikişsiz kartlık", n=2, client=fg, seed=2, log=lambda *_: None)
+    names = [d.ad for d, _ in res]
+    assert len(res) == 2 and hopeless.ad not in names
+    assert all(not [f for f in fs if f.level == "hata"] for _, fs in res)
+    first = fg.calls[0]
+    assert first["model"] == ai.GEMINI_MODEL
+    assert "DİKİŞSİZ" in first["config"].system_instruction
+    assert first["config"].response_json_schema is not None
+    assert "TEKRARLAMA" in fg.calls[-1]["contents"][-1]  # ikinci turda öncekiler bildirildi
+
+
+def test_gemini_schema_rejection_falls_back_to_plain_json():
+    from google.genai import errors
+    good = design("vidali_kartlik")
+    err = errors.ClientError(400, {"error": {"message": "schema too complex", "status": "INVALID_ARGUMENT"}})
+    fg = FakeGemini(err, ai.Fikirler(tasarimlar=[good]).model_dump_json())
+    out = ai._ask("x", ai.Fikirler, fg)
+    assert out.tasarimlar[0].ad == good.ad
+    assert fg.calls[1]["config"].response_json_schema is None
+    assert "JSON şemasına" in fg.calls[1]["config"].system_instruction
+
+
+def test_provider_selection(monkeypatch):
+    monkeypatch.delenv("SABLON_AI", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "x")
+    assert ai.provider() == "gemini"
+    monkeypatch.setenv("SABLON_AI", "claude")
+    assert ai.provider() == "claude"

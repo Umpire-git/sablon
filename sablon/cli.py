@@ -312,6 +312,7 @@ def main(argv: list[str] | None = None):
     s = sub.add_parser("fikir", help="Tariften birbirinden farklı tasarımlar üret (Claude)")
     s.add_argument("tarif"); s.add_argument("-n", "--adet", type=int, default=4)
     s.add_argument("-d", "--klasor", default="fikirler"); s.add_argument("--malzeme", default="")
+    s.add_argument("--ai", choices=["claude", "gemini"], help="Yapay zekâ sağlayıcısı (varsayılan: hangi anahtar varsa)")
     s.set_defaults(f=cmd_fikir)
 
     s = sub.add_parser("ornekler", help="Hazır örnek tasarımlar"); s.set_defaults(f=cmd_ornekler)
@@ -319,7 +320,8 @@ def main(argv: list[str] | None = None):
     s.add_argument("ornek"); s.add_argument("-o", "--cikti", default="proje.json"); s.set_defaults(f=cmd_yeni)
 
     s = sub.add_parser("duzelt", help="'Burası uzun olmuş' gibi geri bildirimle düzelt (Claude)")
-    s.add_argument("proje"); s.add_argument("geri_bildirim"); s.set_defaults(f=cmd_duzelt)
+    s.add_argument("proje"); s.add_argument("geri_bildirim")
+    s.add_argument("--ai", choices=["claude", "gemini"]); s.set_defaults(f=cmd_duzelt)
 
     s = sub.add_parser("ayarla", help="Değişken / panel alanı değiştir (ör. kart_adet=6 kapak.yukseklik=40)")
     s.add_argument("proje"); s.add_argument("degerler", nargs="+"); s.set_defaults(f=cmd_ayarla)
@@ -330,6 +332,7 @@ def main(argv: list[str] | None = None):
 
     s = sub.add_parser("incele", help="Ürünü canlandırıp kullanım risklerini bul (Claude)")
     s.add_argument("proje"); s.add_argument("--uygula", action="store_true", help="Yüksek önemli önerileri uygula")
+    s.add_argument("--ai", choices=["claude", "gemini"])
     s.set_defaults(f=cmd_incele)
 
     s = sub.add_parser("cikti", help="PDF kitapçık, SVG, DXF, 3B görüntüleyici, ürün görselleri")
@@ -344,7 +347,7 @@ def main(argv: list[str] | None = None):
     s.set_defaults(f=cmd_cikti)
 
     s = sub.add_parser("ogren", help="Referans PDF'lerden bilgi çıkarıp bilgi bankasına ekle (Claude)")
-    s.add_argument("pdfler", nargs="+"); s.set_defaults(f=cmd_ogren)
+    s.add_argument("pdfler", nargs="+"); s.add_argument("--ai", choices=["claude", "gemini"]); s.set_defaults(f=cmd_ogren)
 
     s = sub.add_parser("gecmis", help="Değişiklik geçmişi"); s.add_argument("proje"); s.set_defaults(f=cmd_gecmis)
 
@@ -360,6 +363,8 @@ def main(argv: list[str] | None = None):
     s.add_argument("--goster", action="store_true"); s.set_defaults(f=cmd_kalibre)
 
     a = ap.parse_args(argv)
+    if getattr(a, "ai", None):
+        os.environ["SABLON_AI"] = a.ai
     a.f(a)
 
 

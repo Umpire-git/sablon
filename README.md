@@ -41,9 +41,19 @@ geçen paneller, sığmayan kartlar, boşluğa düşen çıtçıt, tutmayan kili
 5. **`deneme.bat`** dosyasına çift tıklayın: örnek kartlığın kalıbı, PDF kitapçığı, 3B dosyası ve Blender
    fotoğrafları `deneme_cikti` klasörüne üretilir ve klasör açılır.
 
-Claude ile fikir üretmek / düzeltmek için ayrıca bir Anthropic API anahtarı gerekir
-(<https://console.anthropic.com/>): komut penceresinde `setx ANTHROPIC_API_KEY "anahtarınız"` yazıp
-pencereyi kapatıp yeniden açın.
+**Yapay zekâ ile yeni fikirler (Gemini veya Claude):** bir anahtar yeterlidir.
+- Gemini (ücretsiz kotası var, görseller için de kullanılır): <https://aistudio.google.com/apikey> →
+  `setx GEMINI_API_KEY "anahtarınız"`
+- Claude: <https://console.anthropic.com/> → `setx ANTHROPIC_API_KEY "anahtarınız"`
+
+Pencereyi kapatıp yeniden açın, sonra **`fikir.bat`**'a çift tıklayın: ne istediğinizi yazarsınız, fikirler
+`fikirler` klasörüne ve karşılaştırma sayfası `koleksiyon.pdf`'e gelir. İkisi de tanımlıysa seçmek için
+`sablon fikir "..." --ai gemini`. Model adları: `SABLON_GEMINI_TEXT_MODEL` (varsayılan `gemini-2.5-pro`),
+`SABLON_MODEL` (varsayılan `claude-opus-5-5`).
+
+**Yalnızca uygulanabilir fikirler gösterilir:** her fikir motorda derlenir ve 3B çarpışma, montaj sırası, kart
+hacmi, kilit, çıtçıt teması, kalınlık kontrollerinden SIFIR hatayla geçmelidir. Hatalı fikir yapay zekâya
+onartılır (3 tur); onarılamazsa elenir ve yerine yeni fikir istenir.
 
 Mac/Linux: `pip install -e ".[dev]"`, Blender'ı kurun (veya Python 3.11'de `pip install bpy`).
 

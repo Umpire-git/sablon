@@ -20,6 +20,19 @@ from .design import Tasarim, from_dict
 from .engine import BuildError, build
 
 MODEL = os.environ.get("SABLON_MODEL", "claude-opus-5-5")
+GEMINI_MODEL = os.environ.get("SABLON_GEMINI_TEXT_MODEL", "gemini-2.5-pro")
+
+
+def provider() -> str:
+    """claude | gemini. SABLON_AI ile seçilir; yoksa hangi anahtar tanımlıysa o."""
+    p = os.environ.get("SABLON_AI", "").strip().lower()
+    if p in ("claude", "gemini"):
+        return p
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+    if os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+        return "gemini"
+    return "claude"
 HERE = os.path.dirname(__file__)
 ROOT = os.path.dirname(HERE)
 
@@ -112,10 +125,25 @@ def _client():
     return anthropic.Anthropic()
 
 
-def _ask(content, schema: type[BaseModel], client=None, max_tokens: int = 64000, effort: str = "high"):
+def _ask(content, schema: type[BaseModel], client=None, max_tokens: int = 64000, effort: str = "high", pdf: bytes | None = None):
+    """Yapılandırılmış (şemaya uyan) yanıt ister; sağlayıcı istemciden veya ortamdan seçilir."""
+    if client is not None:
+        use = "gemini" if hasattr(client, "models") and not hasattr(client, "beta") else "claude"
+    else:
+        use = provider()
+    if use == "gemini":
+        return _ask_gemini(content, schema, client, max_tokens, pdf)
+    return _ask_claude(content, schema, client, max_tokens, effort, pdf)
+
+
+def _ask_claude(content, schema, client, max_tokens, effort, pdf):
     import anthropic
 
     client = client or _client()
+    if pdf is not None:
+        content = [{"type": "document", "source": {"type": "base64", "media_type": "application/pdf",
+                                                    "data": base64.standard_b64encode(pdf).decode()}},
+                   {"type": "text", "text": content}]
     try:
         with client.beta.messages.stream(
             model=MODEL,
@@ -131,7 +159,8 @@ def _ask(content, schema: type[BaseModel], client=None, max_tokens: int = 64000,
         ) as stream:
             msg = stream.get_final_message()
     except anthropic.AuthenticationError as e:
-        raise AIError("Claude API anahtarı bulunamadı/geçersiz. ANTHROPIC_API_KEY ortam değişkenini ayarlayın.") from e
+        raise AIError("Claude API anahtarı bulunamadı/geçersiz. ANTHROPIC_API_KEY ortam değişkenini ayarlayın "
+                      "(veya Gemini kullanmak için SABLON_AI=gemini ve GEMINI_API_KEY).") from e
     except anthropic.RateLimitError as e:
         raise AIError("Claude API hız sınırına takıldı; biraz sonra tekrar deneyin.") from e
     except anthropic.APIStatusError as e:
@@ -150,6 +179,63 @@ def _ask(content, schema: type[BaseModel], client=None, max_tokens: int = 64000,
         return schema.model_validate_json(text)
     except Exception as e:
         raise AIError(f"Model yanıtı şemaya uymadı: {e}") from e
+
+
+def _gemini_client():
+    try:
+        from google import genai
+    except ImportError as e:  # pragma: no cover
+        raise AIError("Gemini paketi kurulu değil: pip install google-genai") from e
+    if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+        raise AIError("GEMINI_API_KEY tanımlı değil. Ücretsiz anahtar: https://aistudio.google.com/apikey")
+    return genai.Client()
+
+
+def _ask_gemini(content, schema, client, max_tokens, pdf):
+    """Gemini: önce JSON şemasıyla zorlanmış çıktı; şema reddedilirse şemayı metinle verip doğrular."""
+    from google.genai import errors, types
+
+    client = client or _gemini_client()
+    system = system_blocks()[0]["text"]
+    parts = []
+    if pdf is not None:
+        parts.append(types.Part.from_bytes(data=pdf, mime_type="application/pdf"))
+    parts.append(content)
+    js = schema.model_json_schema()
+    attempts = [
+        types.GenerateContentConfig(system_instruction=system, max_output_tokens=max_tokens,
+                                    response_mime_type="application/json", response_json_schema=js),
+        types.GenerateContentConfig(system_instruction=system + "\n\nYanıtı YALNIZCA şu JSON şemasına uyan tek bir "
+                                    "JSON nesnesi olarak ver:\n" + json.dumps(js, ensure_ascii=False),
+                                    max_output_tokens=max_tokens, response_mime_type="application/json"),
+    ]
+    last = None
+    for i, cfg in enumerate(attempts):
+        try:
+            resp = client.models.generate_content(model=GEMINI_MODEL, contents=parts, config=cfg)
+        except errors.ClientError as e:
+            code = getattr(e, "code", None)
+            if code in (401, 403):
+                raise AIError("Gemini anahtarı geçersiz veya yetkisiz (GEMINI_API_KEY).") from e
+            if code == 429:
+                raise AIError("Gemini kotası/hız sınırı doldu; biraz sonra tekrar deneyin "
+                              "(ücretsiz kotada dakikalık sınır düşüktür).") from e
+            if code == 404:
+                raise AIError(f"Gemini modeli bulunamadı: {GEMINI_MODEL}. SABLON_GEMINI_TEXT_MODEL ile güncel bir "
+                              "model adı verin.") from e
+            last = e
+            continue  # şema reddedildi → şemasız dene
+        except errors.APIError as e:
+            raise AIError(f"Gemini API hatası: {e}") from e
+        parsed = getattr(resp, "parsed", None)
+        if isinstance(parsed, schema):
+            return parsed
+        text = getattr(resp, "text", None) or ""
+        try:
+            return schema.model_validate_json(text)
+        except Exception as e:  # bozuk/eksik JSON
+            last = e
+    raise AIError(f"Gemini yanıtı şemaya uymadı: {last}")
 
 
 # --- doğrulama + onarım döngüsü -----------------------------------------------------------
@@ -214,20 +300,31 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
           "neyin farklı olduğunu anlatacak şekilde yaz."
     )
     extra = max(1, n // 3)
-    log(f"Claude {n} fikir tasarlıyor (+{extra} yedek; ilham: {', '.join(sparks[:3])})...")
-    prompt = prompt.replace(f"{n} adet BİRBİRİNDEN", f"{n + extra} adet BİRBİRİNDEN")
-    res: Fikirler = _ask(prompt, Fikirler, client)
-    out = []
-    for d in res.tasarimlar:
-        f = evaluate(d)
-        if _errors(f):
-            log(f"'{d.ad}': {len(_errors(f))} hata, onarılıyor...")
-            d, f = repair(d, f, client, log=log)
-        out.append((d, f))
-    # önce hatasızlar, sonra uyarı sayısı az olanlar; istenen sayı kadar döndür
-    out.sort(key=lambda df: (len(_errors(df[1])), sum(x.level == "uyari" for x in df[1])))
-    good = [df for df in out if not _errors(df[1])]
-    return (good if len(good) >= n else out)[:n]
+    valid, rejected = [], []
+    seen = list(previous or [])
+    for round_ in range(3):
+        need = n - len(valid)
+        if need <= 0:
+            break
+        k = need + extra
+        who = ("Gemini" if (client is not None and not hasattr(client, "beta")) or (client is None and provider() == "gemini")
+               else "Claude")
+        log(f"{who} {k} fikir tasarlıyor (ilham: {', '.join(sparks[:3])})...")
+        ask = prompt.replace(f"{n} adet BİRBİRİNDEN", f"{k} adet BİRBİRİNDEN")
+        if seen and round_ > 0:
+            ask += "\nBunlar zaten üretildi, TEKRARLAMA:\n" + "\n".join(f"- {x}" for x in seen)
+        res: Fikirler = _ask(ask, Fikirler, client)
+        for d in res.tasarimlar:
+            f = evaluate(d)
+            if _errors(f):
+                log(f"'{d.ad}': {len(_errors(f))} hata, onarılıyor...")
+                d, f = repair(d, f, client, rounds=3, log=log)
+            (rejected if _errors(f) else valid).append((d, f))
+            seen.append(f"{d.ad}: {d.konsept[:120]}")
+    if rejected:
+        log(f"{len(rejected)} fikir onarıldıktan sonra da üretilebilir değildi; elendi.")
+    valid.sort(key=lambda df: sum(x.level == "uyari" for x in df[1]))
+    return valid[:n]
 
 
 def revise(design: Tasarim, feedback: str, client=None, log=print) -> tuple[Revizyon, Tasarim, list]:
@@ -271,16 +368,13 @@ def review(design: Tasarim, client=None) -> Inceleme:
 def learn_pdf(path: str, client=None) -> tuple[Bilgi, str]:
     """Kullanıcının PDF'ini okuyup genellenebilir bilgiyi bilgi/kullanici/ altına yazar."""
     with open(path, "rb") as f:
-        data = base64.standard_b64encode(f.read()).decode()
-    content = [
-        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data}},
-        {"type": "text", "text": (
-            "Bu, kullanıcının referans aldığı bir dikişsiz deri kalıp/talimat PDF'i. Genellenebilir bilgiyi çıkar: ölçü ve "
-            "pay kuralları, kilit/yarık/kat toleransları, yapım sırası ve teknikler, tasarım motifleri (ilke olarak, birebir kopya değil), "
-            "talimat anlatım üslubu ve sayfa düzeni. Başkasının tasarımını çoğaltmaya yarayacak birebir ölçü listesi "
-            "çıkarma; kendi tasarımlarımızı geliştirmeye yarayacak dersleri yaz.")},
-    ]
-    info: Bilgi = _ask(content, Bilgi, client, max_tokens=16000)
+        pdf = f.read()
+    content = ("Bu, kullanıcının referans aldığı bir dikişsiz deri kalıp/talimat PDF'i. Genellenebilir bilgiyi çıkar: "
+               "ölçü ve pay kuralları, kilit/yarık/kat toleransları, yapım sırası ve teknikler, tasarım motifleri "
+               "(ilke olarak, birebir kopya değil), talimat anlatım üslubu ve sayfa düzeni. Başkasının tasarımını "
+               "çoğaltmaya yarayacak birebir ölçü listesi çıkarma; kendi tasarımlarımızı geliştirmeye yarayacak "
+               "dersleri yaz.")
+    info: Bilgi = _ask(content, Bilgi, client, max_tokens=16000, pdf=pdf)
     name = os.path.splitext(os.path.basename(path))[0]
     safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name)[:60]
     out = os.path.join(HERE, "bilgi", "kullanici", f"{safe}.md")
