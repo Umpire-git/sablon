@@ -631,3 +631,31 @@ def test_pull_strip_through_slot():
     f = pull_fold(b)
     assert f["kapak"] == 0.0 and f["on"] == 1.0
     assert len(build_mesh(b, f, soft=False, pull=1.0).P) > 0
+
+
+def test_repair_fixes_quality_warnings():
+    good = design("cekme_seritli_kartlik")
+    weak = copy.deepcopy(good)
+    rivets = [f for f in weak.ozellikler if f.tip == "percin"]
+    weak.ozellikler = [f for f in weak.ozellikler if f is not rivets[1]]
+    fs = ai.evaluate(weak)
+    assert any(f.code == "tek_baglanti" for f in fs) and not ai._errors(fs)
+    fc = FakeClient(ai.Fikirler(tasarimlar=[weak]), ai.Onarim(tasarim=good, aciklama="ikinci perçin"))
+    res = ai.ideas("şeritli kartlık", n=1, client=fc, seed=1, log=lambda *_: None)
+    assert len(fc.calls) == 2
+    assert not any(f.code == "tek_baglanti" for f in res[0][1])
+
+
+def test_fikir_full_package(tmp_path, monkeypatch):
+    d = design("cekme_seritli_kartlik")
+    monkeypatch.setattr(ai, "ideas", lambda *a, **k: [(d, ai.evaluate(d))])
+    main(["fikir", "şeritli kartlık", "-n", "1", "-d", str(tmp_path), "--tam", "--hizli"])
+    sub = [p for p in tmp_path.iterdir() if p.is_dir()]
+    assert len(sub) == 1
+    names = {p.name for p in sub[0].iterdir()}
+    for suffix in ("_A4.pdf", "_Letter.pdf", "_tam_boy.pdf", ".svg", ".dxf", "_3B.html", "_urun.png",
+                   "_cekilmis.png", "_etsy.txt", ".json"):
+        assert any(n.endswith(suffix) for n in names), suffix
+    etsy = next(p for p in sub[0].iterdir() if p.name.endswith("_etsy.txt")).read_text(encoding="utf-8")
+    assert "Stitchless" in etsy and "Pull-Tab" in etsy
+    assert (tmp_path / "koleksiyon.pdf").exists()

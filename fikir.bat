@@ -12,7 +12,7 @@ if not defined GEMINI_API_KEY if not defined ANTHROPIC_API_KEY (
 set /p TARIF=Ne istiyorsunuz? (ornek: kapakli citcitli dikissiz kartlik, crazy horse) :
 set /p ADET=Kac fikir? (ornek: 4) :
 if "%ADET%"=="" set ADET=4
-sablon fikir "%TARIF%" -n %ADET% -d fikirler
+sablon fikir "%TARIF%" -n %ADET% -d fikirler --tam
 if errorlevel 1 (
   echo.
   echo Uygulanabilir fikir cikmadi veya bir hata oldu. Yukaridaki yaziyi okuyun.
@@ -21,7 +21,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo.
-echo Fikirler 'fikirler' klasorunde. Karsilastirma sayfasi aciliyor...
+echo Her fikir kendi klasorunde: PDF kaliplar, SVG, DXF, 3B, gorseller ve Etsy metni hazir.
 if exist fikirler\koleksiyon.pdf start "" fikirler\koleksiyon.pdf
 start "" fikirler
 pause

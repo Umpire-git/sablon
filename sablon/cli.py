@@ -58,13 +58,17 @@ def cmd_yeni(a):
     _summary(design)
 
 
+TAM_PAKET = "a4,letter,full,svg,dxf,3b,gorsel,etsy"
+
+
 def cmd_fikir(a):
     from .ai import AIError, ideas
     from .export.document import make_document
     from .export.pdf import write_contact_sheet
     os.makedirs(a.klasor, exist_ok=True)
     previous = []
-    for path in sorted(glob.glob(os.path.join(a.klasor, "*.json"))):
+    existing = sorted(glob.glob(os.path.join(a.klasor, "*.json")) + glob.glob(os.path.join(a.klasor, "[0-9]*", "*.json")))
+    for path in existing:
         try:
             d, _ = P.load(path)
             previous.append(f"{d.ad}: {d.konsept[:160]}")
@@ -87,10 +91,13 @@ def cmd_fikir(a):
                     if f.level == "hata":
                         fh.write(f"- {f.message}\n")
         print(f"\n{len(rejected)} fikir kontrollerden geçemedi; nedenleriyle birlikte: {rdir}")
-    start = len(glob.glob(os.path.join(a.klasor, "*.json")))
+    start = len(existing)
     docs = []
     for i, (d, findings) in enumerate(res, start + 1):
-        path = os.path.join(a.klasor, f"{i:02d}_{_slug(d.ad)}.json")
+        stem = f"{i:02d}_{_slug(d.ad)}"
+        folder = os.path.join(a.klasor, stem) if a.tam else a.klasor
+        os.makedirs(folder, exist_ok=True)
+        path = os.path.join(folder, stem + ".json")
         hist: list = []
         P.log(hist, "ai:fikir", a.tarif, [])
         P.save(path, d, hist)
@@ -101,6 +108,15 @@ def cmd_fikir(a):
                 docs.append((path, make_document(d, quick=True)))
             except Exception as ex:  # görsel üretimi fikri engellemesin
                 print(f"  (görsel üretilemedi: {ex})")
+            if a.tam:
+                print("  Satış paketi hazırlanıyor (PDF kalıplar, SVG/DXF, 3B, görseller, Etsy metni)...")
+                try:
+                    made = cmd_cikti(argparse.Namespace(
+                        proje=path, klasor=folder, ad=None, bicim=TAM_PAKET, hizli=a.hizli, zorla=False,
+                        foto=None, gemini=None, doku=None, sessiz=True))
+                    print(f"  ✓ {len(made)} dosya → {folder}")
+                except (SystemExit, Exception) as ex:
+                    print(f"  (paket üretilemedi: {ex})")
     if not res:
         print("\nHiçbir fikir tüm kontrollerden hatasız geçemedi, bu yüzden uygulanabilir fikir yok.")
         if rejected:
@@ -114,6 +130,8 @@ def cmd_fikir(a):
         sheet = os.path.join(a.klasor, "koleksiyon.pdf")
         write_contact_sheet(docs, sheet, a.tarif)
         print(f"\nKarşılaştırma sayfası: {sheet}")
+    if a.tam:
+        print("\nHer fikrin klasöründe: A4/Letter/tam boy PDF kalıp, SVG, DXF, 3B (HTML), ürün görselleri ve Etsy metni.")
     print("\nBeğendiğinizi düzeltin/çıktı alın:  sablon duzelt <dosya> \"...\"   sablon cikti <dosya>")
 
 
@@ -278,9 +296,16 @@ def cmd_cikti(a):
             made += realistic_set(refs, design, base, scenes=a.gemini.split(","))
         except GeminiYok as e:
             print(f"  ⚠ {e}")
-    print("Oluşturulan dosyalar:")
-    for m in made:
-        print(f"  {m}")
+    if "etsy" in kinds:
+        from .export.etsy import listing
+        with open(f"{base}_etsy.txt", "w", encoding="utf-8") as fh:
+            fh.write(listing(doc, made))
+        made.append(f"{base}_etsy.txt")
+    if not getattr(a, "sessiz", False):
+        print("Oluşturulan dosyalar:")
+        for m in made:
+            print(f"  {m}")
+    return made
 
 
 def cmd_ogren(a):
@@ -355,6 +380,8 @@ def main(argv: list[str] | None = None):
     s.add_argument("tarif"); s.add_argument("-n", "--adet", type=int, default=4)
     s.add_argument("-d", "--klasor", default="fikirler"); s.add_argument("--malzeme", default="")
     s.add_argument("--ai", choices=["claude", "gemini"], help="Yapay zekâ sağlayıcısı (varsayılan: hangi anahtar varsa)")
+    s.add_argument("--tam", action="store_true", help="Her uygun fikir için klasöründe tam satış paketi üret")
+    s.add_argument("--hizli", action="store_true", help="Paket görsellerini hızlı (düşük kalite) üret")
     s.set_defaults(f=cmd_fikir)
 
     s = sub.add_parser("ornekler", help="Hazır örnek tasarımlar"); s.set_defaults(f=cmd_ornekler)
@@ -379,7 +406,7 @@ def main(argv: list[str] | None = None):
 
     s = sub.add_parser("cikti", help="PDF kitapçık, SVG, DXF, 3B görüntüleyici, ürün görselleri")
     s.add_argument("proje"); s.add_argument("-d", "--klasor", default="cikti"); s.add_argument("--ad")
-    s.add_argument("--bicim", default="a4,letter,full,svg,dxf,3b,gorsel")
+    s.add_argument("--bicim", default="a4,letter,full,svg,dxf,3b,gorsel,etsy")
     s.add_argument("--hizli", action="store_true", help="Düşük çözünürlüklü görseller (hızlı)")
     s.add_argument("--foto", choices=["hizli", "kaliteli"], help="Blender ile fotogerçekçi ürün görselleri")
     s.add_argument("--gemini", nargs="?", const="studyo", metavar="SAHNE",

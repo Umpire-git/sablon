@@ -101,6 +101,10 @@ görseldeki ürün kalıptan çıkan üründür. Daha yüksek kalite için `SABL
 # 1) Fikir üret (her çalıştırmada farklı ilham; aynı klasördekileri tekrarlamaz)
 sablon fikir "kapaklı, çıtçıtlı dikişsiz kartlık" -n 5 --malzeme crazy_horse
 #    → fikirler/01_....json ... + fikirler/koleksiyon.pdf (3B görselli karşılaştırma)
+#    --tam: her uygun fikir kendi klasöründe hazır satış paketiyle gelir
+#           (A4/Letter/tam boy PDF kalıp, SVG, DXF, 3B HTML, ürün görselleri, Etsy ilan metni)
+#    Yapay zekâ hataları ve ürünü kullanılmaz kılan uyarıları (tek perçin, kart tutulamıyor,
+#    şerit ucu kısa...) kendisi düzeltir; düzeltemediklerini fikirler/elenenler/ altına nedenleriyle yazar.
 
 # 2) Beğendiğini düzelt
 sablon duzelt fikirler/03_zarf_kartlik.json "kapak biraz kısa, çıtçıt daha aşağıda olsun"

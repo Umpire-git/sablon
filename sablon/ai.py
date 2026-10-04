@@ -271,24 +271,41 @@ def _errors(findings) -> list:
     return [f for f in findings if f.level == "hata"]
 
 
+# Ürünü kullanılmaz kılan uyarılar: yapay zekâ bunları da hata gibi düzeltmeye çalışır.
+QUALITY = {"tek_baglanti", "cekme_az", "cekme_ucu", "erisim", "percin_kenar", "kilit_zor", "tutmuyor", "ince_panel"}
+
+
+def _must(findings) -> list:
+    return [f for f in findings if f.level == "hata" or (f.level == "uyari" and f.code in QUALITY)]
+
+
+def _score(findings) -> tuple:
+    return (len(_errors(findings)), len(_must(findings)), sum(f.level == "uyari" for f in findings))
+
+
 def repair(design: Tasarim, findings, client=None, rounds: int = 2, log=print) -> tuple[Tasarim, list]:
+    """Hataları (ve ürünü kullanılmaz kılan uyarıları) yapay zekâya düzelttirir; en iyi sürümü döndürür."""
+    best = (design, findings)
     for _ in range(rounds):
-        errs = _errors(findings)
-        if not errs:
+        must = _must(findings)
+        if not must:
             break
-        warns = [f for f in findings if f.level == "uyari"]
+        other = [f for f in findings if f.level == "uyari" and f not in must]
         prompt = (
             "Bu tasarım motorda derlendiğinde aşağıdaki sorunlar çıktı. Tasarım fikrini ve karakterini koruyarak "
-            "HATALARIN hepsini, mümkünse uyarıları da gider. Tam tasarımı döndür.\n\n"
+            "aşağıdaki SORUNLARIN hepsini, mümkünse uyarıları da gider. Bir mekanizma çakışıyorsa (ör. kapak ile çekme "
+            "şeridi) tasarım dili belgesindeki doğrulanmış kuruluşlardan birine geç. Tam tasarımı döndür.\n\n"
             f"# Tasarım\n```json\n{json.dumps(design.model_dump(), ensure_ascii=False)}\n```\n\n"
-            "# Hatalar\n" + "\n".join(f"- {f.message}" for f in errs) +
-            ("\n\n# Uyarılar\n" + "\n".join(f"- {f.message}" for f in warns) if warns else "")
+            "# Giderilmesi zorunlu sorunlar\n" + "\n".join(f"- {f.message}" for f in must) +
+            ("\n\n# Uyarılar\n" + "\n".join(f"- {f.message}" for f in other) if other else "")
         )
         res: Onarim = _ask(prompt, Onarim, client, max_tokens=32000)
         log(f"  onarım: {res.aciklama}")
         design = res.tasarim
         findings = evaluate(design)
-    return design, findings
+        if _score(findings) < _score(best[1]):
+            best = (design, findings)
+    return best
 
 
 # --- üst düzey işlemler ------------------------------------------------------------------
@@ -335,8 +352,9 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
         res: Fikirler = _ask(ask, Fikirler, client)
         for d in res.tasarimlar:
             f = evaluate(d)
-            if _errors(f):
-                log(f"'{d.ad}': {len(_errors(f))} hata, onarılıyor...")
+            if _must(f):
+                ne, nw = len(_errors(f)), len(_must(f)) - len(_errors(f))
+                log(f"'{d.ad}': {ne} hata, {nw} önemli uyarı; düzeltiliyor...")
                 d, f = repair(d, f, client, rounds=3, log=log)
             (rejected if _errors(f) else valid).append((d, f))
             seen.append(f"{d.ad}: {d.konsept[:120]}")
@@ -345,7 +363,7 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
     if rejected_out is not None:
         rejected.sort(key=lambda df: len(_errors(df[1])))
         rejected_out.extend(rejected)
-    valid.sort(key=lambda df: sum(x.level == "uyari" for x in df[1]))
+    valid.sort(key=lambda df: _score(df[1]))
     return valid[:n]
 
 
