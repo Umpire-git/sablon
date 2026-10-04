@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from . import calibration
 from . import materials as M
 from .design import Icerik, Panel, Parca, Tasarim
 from .expr import ExprError, evaluate
@@ -79,11 +80,12 @@ class PanelGeo:
     mount: object = None                 # Montaj (kök + monte parça)
     mount_z: float = 0.0
     hinge_x: tuple = (0.0, 0.0)          # menteşe örtüşme aralığı (çocuk x'inde)
+    bend_k: float = BEND                 # kıvrım iç yarıçapı / kalınlık (malzeme kalibrasyonundan)
     through: float = 0.0                 # yarıktan geçiş kayması (3B)
 
     @property
     def bend_r(self) -> float:
-        return BEND * self.t
+        return self.bend_k * self.t
 
     @property
     def edge_lines(self):
@@ -503,6 +505,7 @@ def build(design: Tasarim) -> Built:
             corners = [max(0.0, num(x, f"{p.id}.kose", 0.0)) for x in (c.sol_alt, c.sag_alt, c.sag_ust, c.sol_ust)]
             ang = num(p.aci, f"{p.id}.aci", 0.0) if p.ebeveyn else 0.0
             pg = PanelGeo(p.id, part.id, p, w, h, ang, taper, t, corners)
+            pg.bend_k = calibration.bend_k(mk)
             if p.ebeveyn:
                 pg.parent, pg.edge = p.ebeveyn, p.kenar
                 if p.kenar not in EDGES:
@@ -570,7 +573,7 @@ def build(design: Tasarim) -> Built:
         if hi - lo <= 0.5:
             F.append(Finding("hata", "mentese", f"{pid}: '{par.id}' panelinin {p.edge} kenarıyla örtüşmüyor (ofset?)."))
             continue
-        allow = math.radians(abs(p.angle)) * (BEND * p.t + p.t / 2)
+        allow = math.radians(abs(p.angle)) * (p.bend_r + p.t / 2)
         p.hinge_o, p.hinge_d, p.allow = o, d, allow
         p.hinge_x = (lo - (s - p.w / 2), hi - (s - p.w / 2))
         p.flat = par.flat.compose(Affine2(o[0] + n[0] * allow, o[1] + n[1] * allow, d[0], d[1]))
@@ -820,11 +823,15 @@ def _settle_contents(b: Built):
             if q.id == cg.panel:
                 continue
             m = inv @ b.matrix(q.id, 1.0)
+            zs = []
             for (x, y) in q.poly[:: max(1, len(q.poly) // 40)] + q.quad:
                 for z in (0.0, -q.t):
                     v = m @ np.array([x, y, z, 1.0])
-                    if cg.x < v[0] < cg.x + cg.w and cg.y < v[1] < cg.y + cg.h and 0.05 < v[2] < 3 * q.t + 0.5:
-                        top = max(top, float(v[2]))
+                    if cg.x < v[0] < cg.x + cg.w and cg.y < v[1] < cg.y + cg.h:
+                        zs.append(float(v[2]))
+            # yalnızca tabana DEĞEN katlar (alt yüzü taban iç yüzünde) içeriği yükseltir
+            if zs and -0.2 < min(zs) < 0.6 and max(zs) < 3 * q.t + 0.5:
+                top = max(top, max(zs))
         cg.z0 = top
 
 

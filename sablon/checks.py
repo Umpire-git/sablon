@@ -184,7 +184,8 @@ def run_checks(b: Built, steps: bool = True) -> list:
         heads = [q for q in b.panels.values() if q.parent == neck.id]
         if not heads:
             out.append(Finding("hata", "kafa_yok", f"'{neck.id}' kilit dilinin kafası yok; dil yarıktan kayıp çıkar.", neck.id))
-        need_diff = 2.0 if mat.sert else 3.0
+        from .calibration import lock_margin
+        need_diff = lock_margin(mat.key)
         for h in heads:
             diff = h.w - lk["length"]
             if diff < need_diff:
@@ -270,7 +271,7 @@ def run_checks(b: Built, steps: bool = True) -> list:
     # --- içerik: sığıyor mu, tutuluyor mu, çıkıyor mu?
     for cg in b.contents:
         p = b.panels[cg.panel]
-        label = f"{cg.spec.adet} {cg.spec.tip}"
+        label = f"{cg.spec.adet} {dict(kart='kart', banknot='banknot', anahtar='anahtar').get(cg.spec.tip, 'içerik')}"
         if cg.x < -0.01 or cg.x + cg.w > p.w + 0.01 or cg.y < -0.01:
             out.append(Finding("hata", "icerik_tasiyor", f"{label}: '{p.id}' paneline sığmıyor ({cg.w:.1f} mm > {p.w:.1f} mm).", p.id))
             continue

@@ -298,6 +298,7 @@ def test_ideas_validate_and_repair():
     fc = FakeClient(ai.Fikirler(tasarimlar=[good, broken]), ai.Onarim(tasarim=fixed, aciklama="hedef düzeltildi"))
     res = ai.ideas("kapaklı çıtçıtlı kartlık", n=2, client=fc, seed=1, log=lambda *_: None)
     assert len(res) == 2
+    assert "3 adet BİRBİRİNDEN" in fc.calls[0]["messages"][0]["content"]  # yedekli üretim
     assert all(not [f for f in fs if f.level == "hata"] for _, fs in res)
     assert len(fc.calls) == 2  # 1 fikir + 1 onarım
     kw = fc.calls[0]
@@ -421,3 +422,29 @@ def test_gemini_without_key_is_clear(monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     with pytest.raises(gemini.GeminiYok):
         gemini._client()
+
+
+# --- kalibrasyon ---------------------------------------------------------------------------
+def test_calibration_roundtrip_and_effect(tmp_path, monkeypatch):
+    from sablon import calibration as C
+    t, r = 1.6, 1.2
+    L = C.STRIP_L
+    # motorun modeline göre katlanmış şeridin ölçülecek boyu
+    P = (L - math.pi * (r + t / 2)) / 2
+    F = P + r + t
+    assert C.bend_from_measure(F, t) == pytest.approx(r / t, rel=1e-6)
+    monkeypatch.setenv("SABLON_KALIBRASYON", str(tmp_path / "k.json"))
+    before = build(design("vidali_kartlik")).panels["on"].allow
+    C.save("vaketa", kivrim_orani=1.5, kilit_payi=5.0)
+    b = build(design("vidali_kartlik"))
+    assert b.panels["on"].bend_k == 1.5 and b.panels["on"].allow > before
+    assert C.lock_margin("vaketa") == 5.0
+    assert "kilit_tutmaz" in codes(load("dikissiz_kilitli_kartlik"))  # 5 mm pay isteniyor, kafa yalnızca +4
+
+
+def test_calibration_pdf(tmp_path):
+    from sablon.calibration import write_pdf
+    out = tmp_path / "k.pdf"
+    write_pdf(str(out), "crazy_horse", 1.6)
+    text = "".join(p.extract_text() for p in PdfReader(str(out)).pages)
+    assert "Katlama testi" in text and "sablon kalibre crazy_horse" in text

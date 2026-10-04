@@ -213,7 +213,9 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
         + "\nHer tasarımda: içerikleri (kart vb.) tanımla, kat_sirasi'nı montaj mantığına göre ver, konsepti 2-4 cümleyle "
           "neyin farklı olduğunu anlatacak şekilde yaz."
     )
-    log(f"Claude {n} fikir tasarlıyor (ilham: {', '.join(sparks[:3])})...")
+    extra = max(1, n // 3)
+    log(f"Claude {n} fikir tasarlıyor (+{extra} yedek; ilham: {', '.join(sparks[:3])})...")
+    prompt = prompt.replace(f"{n} adet BİRBİRİNDEN", f"{n + extra} adet BİRBİRİNDEN")
     res: Fikirler = _ask(prompt, Fikirler, client)
     out = []
     for d in res.tasarimlar:
@@ -222,7 +224,10 @@ def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None
             log(f"'{d.ad}': {len(_errors(f))} hata, onarılıyor...")
             d, f = repair(d, f, client, log=log)
         out.append((d, f))
-    return out
+    # önce hatasızlar, sonra uyarı sayısı az olanlar; istenen sayı kadar döndür
+    out.sort(key=lambda df: (len(_errors(df[1])), sum(x.level == "uyari" for x in df[1])))
+    good = [df for df in out if not _errors(df[1])]
+    return (good if len(good) >= n else out)[:n]
 
 
 def revise(design: Tasarim, feedback: str, client=None, log=print) -> tuple[Revizyon, Tasarim, list]:

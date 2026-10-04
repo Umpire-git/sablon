@@ -1,0 +1,223 @@
+{
+  "ad": "Kanat Kilitli Dikey Kartlık",
+  "konsept": "Kartlar kısa kenardan girer; ince ve uzun siluet ön cepte taşımaya uygun. Arka panelin yanlarından kalkan kanatlar ön panelin üzerine katlanır ve uçlarındaki diller ön paneldeki yarıklara kilitlenir. Kilitler önde, dekoratif bir ritim oluşturur.",
+  "kategori": "kartlik",
+  "malzeme": "vaketa",
+  "kalinlik": "1.6",
+  "renk": "#a8693a",
+  "degiskenler": [
+    {
+      "ad": "kart_adet",
+      "deger": "4",
+      "aciklama": "kapasite"
+    },
+    {
+      "ad": "S",
+      "deger": "kart_adet*kart_k + 0.6",
+      "aciklama": "kart yığını"
+    },
+    {
+      "ad": "g",
+      "deger": "S",
+      "aciklama": "alt körük"
+    },
+    {
+      "ad": "W",
+      "deger": "kart_y + 3",
+      "aciklama": "genişlik (kart dik durur)"
+    },
+    {
+      "ad": "Hb",
+      "deger": "kart_g - 8",
+      "aciklama": "arka panel boyu (kart 8 mm taşar)"
+    },
+    {
+      "ad": "Hf",
+      "deger": "Hb*0.7",
+      "aciklama": "ön panel"
+    },
+    {
+      "ad": "kanat",
+      "deger": "14",
+      "aciklama": "ön panelin üzerine binen kanat"
+    },
+    {
+      "ad": "boyun",
+      "deger": "10",
+      "aciklama": "kilit boynu"
+    }
+  ],
+  "parcalar": [
+    {
+      "id": "govde",
+      "ad": "Gövde",
+      "adet": 1,
+      "paneller": [
+        {
+          "id": "arka",
+          "ad": "Arka",
+          "genislik": "W",
+          "yukseklik": "Hb",
+          "koseler": {
+            "sag_ust": "6",
+            "sol_ust": "6"
+          }
+        },
+        {
+          "id": "alt_koruk",
+          "ad": "Alt körük",
+          "ebeveyn": "arka",
+          "kenar": "alt",
+          "genislik": "W",
+          "yukseklik": "g",
+          "aci": "90",
+          "kat_sirasi": 1
+        },
+        {
+          "id": "on",
+          "ad": "Ön",
+          "ebeveyn": "alt_koruk",
+          "kenar": "ust",
+          "genislik": "W",
+          "yukseklik": "Hf",
+          "aci": "90",
+          "kat_sirasi": 1,
+          "profil_ust": {
+            "tip": "kavis",
+            "olcu": "6"
+          }
+        },
+        {
+          "id": "duvar_sol",
+          "ad": "Duvar",
+          "ebeveyn": "arka",
+          "kenar": "sol",
+          "ofset": "(Hf - Hb)/2",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "duvar_sag",
+          "ad": "Duvar",
+          "ebeveyn": "arka",
+          "kenar": "sag",
+          "ofset": "(Hf - Hb)/2",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "kanat_sol",
+          "ad": "Kanat",
+          "ebeveyn": "duvar_sol",
+          "kenar": "ust",
+          "genislik": "Hf",
+          "yukseklik": "kanat",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "kanat_sag",
+          "ad": "Kanat",
+          "ebeveyn": "duvar_sag",
+          "kenar": "ust",
+          "genislik": "Hf",
+          "yukseklik": "kanat",
+          "aci": "90",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "boyun_sol",
+          "ad": "dil",
+          "ebeveyn": "kanat_sol",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "boyun",
+          "yukseklik": "6",
+          "aci": "0",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "boyun_sag",
+          "ad": "dil",
+          "ebeveyn": "kanat_sag",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "boyun",
+          "yukseklik": "6",
+          "aci": "0",
+          "kat_sirasi": 2
+        },
+        {
+          "id": "kafa_sol",
+          "ad": "kilit",
+          "ebeveyn": "boyun_sol",
+          "kenar": "ust",
+          "genislik": "boyun + t + 3",
+          "yukseklik": "7",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "yariktan_gecer": true,
+          "koseler": {
+            "sag_ust": "2.5",
+            "sol_ust": "2.5"
+          }
+        },
+        {
+          "id": "kafa_sag",
+          "ad": "kilit",
+          "ebeveyn": "boyun_sag",
+          "kenar": "ust",
+          "genislik": "boyun + t + 3",
+          "yukseklik": "7",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "yariktan_gecer": true,
+          "koseler": {
+            "sag_ust": "2.5",
+            "sol_ust": "2.5"
+          }
+        }
+      ]
+    }
+  ],
+  "ozellikler": [
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sol",
+      "x": "-t/2",
+      "y": "6",
+      "genislik": "boyun + t",
+      "aci": "0",
+      "hedefler": [
+        "on"
+      ]
+    },
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sag",
+      "x": "-t/2",
+      "y": "6",
+      "genislik": "boyun + t",
+      "aci": "0",
+      "hedefler": [
+        "on"
+      ]
+    }
+  ],
+  "icerikler": [
+    {
+      "tip": "ozel",
+      "adet": 4,
+      "panel": "arka",
+      "x": "1.5",
+      "y": "0.3",
+      "genislik": "kart_y",
+      "yukseklik": "kart_g",
+      "kalinlik": "kart_k"
+    }
+  ]
+}

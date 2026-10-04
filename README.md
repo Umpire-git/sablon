@@ -117,6 +117,21 @@ sablon ogren referans1.pdf referans2.pdf
 | `*_3B.html` | Tarayıcıda döndürülebilen 3B model; kaydırıcıyla açınım ↔ bitmiş ürün katlama animasyonu, adım adım montaj |
 | `*_urun.png`, `*_arka.png`, `*_yari_acik.png`, `*_acinim.png` | Etsy listesi için ürün görselleri |
 
+## Kalibrasyon: kalıplar SENİN derine göre (önerilir, bir kez)
+
+Deri tabakhaneye ve partiye göre farklı katlanır; 1–2 mm sapma kilidi ve kartın oturmasını bozar.
+
+```bash
+sablon kalibrasyon --malzeme vaketa --kalinlik 1.6 -o kalibrasyon.pdf   # deneme kalıbı
+# basın, kendi derinizden kesin: katlama şeridini 180° katlayın, F boyunu kumpasla ölçün;
+# 2/3/4 mm'lik kilit dillerinden takılabilen ve tutan en darını seçin
+sablon kalibre vaketa --kalinlik 1.6 --katlama 59.1 --kilit 3
+sablon kalibre --goster
+```
+
+Değerler `kalibrasyon.json`'a yazılır; bundan sonra tüm kat payları, kıvrım yarıçapı, kilit kontrolleri ve
+3B görseller bu değerleri kullanır. Crazy horse için ayrıca yapın.
+
 ## Malzemeler
 
 - Kartlık/cüzdan için kalınlık **1.2–1.8 mm** (tipik 1.4–1.6); 1.8 mm üstü hata sayılır.
@@ -132,7 +147,9 @@ Bir ürün; **parçalar** (ayrı kesilen deriler), her parçada bir **panel ağa
 menteşeyle bağlı çocuk paneller, kat açısı ve sırasıyla), **monte parçalar** (perçin/vida/çıtçıtla bağlanan),
 **özellikler** (kilit yarığı, çıtçıt, perçin, şikago vidası, yarık, oval yuva, delik, pencere, logo alanı) ve
 **içeriklerden** (kart, banknot, anahtar) oluşur. Ölçüler değişkenli ifadeler olabilir: `"kart_g + 2*bosluk"`.
-Ayrıntılar: [`sablon/bilgi/tasarim_dili.md`](sablon/bilgi/tasarim_dili.md), örnekler: `ornekler/`.
+Ayrıntılar: [`sablon/bilgi/tasarim_dili.md`](sablon/bilgi/tasarim_dili.md). Doğrulanmış örnekler (`sablon ornekler`):
+dil-yarık kilitli kartlık, kapaklı çıtçıtlı kartlık, şikago vidalı kartlık, dil kilitli kapaklı (metal parçasız) kartlık,
+kanat kilitli dikey kartlık. Bu örnekler Claude'a da biçim örneği olarak verilir.
 
 Motorun "kafada kurduğu" şeyler:
 

@@ -316,7 +316,7 @@ def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=
         p = b.panels[pid]
         if soft:
             k = 1.3 if b.design.malzeme == "crazy_horse" else 1.0
-            amp = min(1.1, 0.0125 * max(p.w, p.h)) * k if max(p.w, p.h) > 10 else 0.0
+            amp = min(1.1, 0.0125 * max(p.w, p.h)) * k * min(1.0, min(p.w, p.h) / 20.0) if max(p.w, p.h) > 10 else 0.0
             softs[pid] = Soft(p.poly, amp, seed=i * 7 + 3)
         else:
             softs[pid] = Soft(p.poly, 0.0, 0)

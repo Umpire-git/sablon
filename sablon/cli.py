@@ -269,6 +269,34 @@ def cmd_ogren(a):
         print(f"{path} → {out}  ({n} madde). Bundan sonraki tüm tasarımlarda kullanılacak.")
 
 
+def cmd_kalibrasyon(a):
+    from .calibration import write_pdf
+    write_pdf(a.cikti, a.malzeme, a.kalinlik)
+    print(f"Kalibrasyon kalıbı: {a.cikti}\nBasın, kendi derinizden kesin, ölçüp 'sablon kalibre' ile girin.")
+
+
+def cmd_kalibre(a):
+    from . import calibration as C
+    if a.goster or (a.katlama is None and a.kilit is None):
+        data = C.load()
+        print(f"Kaynak: {data.pop('_kaynak', 'varsayılan değerler')}")
+        for mat, v in data.items():
+            print(f"  {mat:<12} kıvrım oranı {v.get('kivrim_orani')}  kilit payı {v.get('kilit_payi')} mm")
+        return
+    vals = {}
+    if a.katlama is not None:
+        if a.kalinlik is None:
+            raise SystemExit("--katlama ile birlikte --kalinlik da verin (testte kullanılan deri kalınlığı).")
+        k = C.bend_from_measure(a.katlama, a.kalinlik)
+        vals["kivrim_orani"] = round(k, 3)
+        vals["olcum_katlama"] = {"F": a.katlama, "t": a.kalinlik}
+        print(f"  Kıvrım iç yarıçapı ≈ {k * a.kalinlik:.2f} mm (oran {k:.2f})")
+    if a.kilit is not None:
+        vals["kilit_payi"] = float(a.kilit)
+    path = C.save(a.malzeme, **vals)
+    print(f"Kaydedildi: {path}. Bundan sonraki tüm kalıplar bu değerleri kullanır.")
+
+
 def cmd_gecmis(a):
     _, hist = P.load(a.proje)
     for h in hist:
@@ -319,6 +347,17 @@ def main(argv: list[str] | None = None):
     s.add_argument("pdfler", nargs="+"); s.set_defaults(f=cmd_ogren)
 
     s = sub.add_parser("gecmis", help="Değişiklik geçmişi"); s.add_argument("proje"); s.set_defaults(f=cmd_gecmis)
+
+    s = sub.add_parser("kalibrasyon", help="Kendi deriniz için deneme kalıbı (PDF)")
+    s.add_argument("--malzeme", default="vaketa", choices=["vaketa", "crazy_horse"])
+    s.add_argument("--kalinlik", type=float, default=1.6)
+    s.add_argument("-o", "--cikti", default="kalibrasyon.pdf"); s.set_defaults(f=cmd_kalibrasyon)
+
+    s = sub.add_parser("kalibre", help="Kalibrasyon ölçümlerini gir / göster")
+    s.add_argument("malzeme", nargs="?", default="vaketa", choices=["vaketa", "crazy_horse"])
+    s.add_argument("--kalinlik", type=float); s.add_argument("--katlama", type=float, help="F ölçüsü (mm)")
+    s.add_argument("--kilit", type=float, choices=[2, 3, 4], help="tutan en dar dil (mm)")
+    s.add_argument("--goster", action="store_true"); s.set_defaults(f=cmd_kalibre)
 
     a = ap.parse_args(argv)
     a.f(a)
