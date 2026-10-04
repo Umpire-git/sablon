@@ -1,0 +1,33 @@
+{
+  "ad": "Kapaklı Çıtçıtlı Kartlık",
+  "konsept": "Tek parça gövde: ön cep alttan katlanıp yanlardan dikilir, sırt körüklü kapak üstten kapanıp çıtçıtla kilitlenir. Zarf ucu kapak klasik ama dolgun bir siluet verir.",
+  "kategori": "kartlik",
+  "malzeme": "crazy_horse",
+  "kalinlik": "1.2",
+  "renk": "#5b3820",
+  "dikis_araligi": "3.85",
+  "kenar_payi": "3.5",
+  "degiskenler": [
+    {"ad": "kart_adet", "deger": "6", "aciklama": "kapasite"},
+    {"ad": "e", "deger": "3.5", "aciklama": "dikiş kenar payı"},
+    {"ad": "S", "deger": "kart_adet*kart_k", "aciklama": "kart yığını"},
+    {"ad": "W", "deger": "kart_g + S + 2 + 2*e", "aciklama": "gövde genişliği (çevre kuralı: iç genişlik ≥ kart + yığın)"},
+    {"ad": "H", "deger": "kart_y + 4", "aciklama": "arka panel yüksekliği"},
+    {"ad": "sirt", "deger": "S + 2*t + 1", "aciklama": "kapak sırtı"}
+  ],
+  "parcalar": [
+    {"id": "govde", "ad": "Gövde", "adet": 1, "paneller": [
+      {"id": "arka", "ad": "Arka", "genislik": "W", "yukseklik": "H"},
+      {"id": "on", "ad": "Ön cep", "ebeveyn": "arka", "kenar": "alt", "genislik": "W", "yukseklik": "H - 8", "aci": "180", "kat_sirasi": 1},
+      {"id": "sirt", "ad": "Sırt", "ebeveyn": "arka", "kenar": "ust", "genislik": "W", "yukseklik": "sirt", "aci": "90", "kat_sirasi": 2},
+      {"id": "kapak", "ad": "Kapak", "ebeveyn": "sirt", "kenar": "ust", "genislik": "W", "yukseklik": "H*0.55", "aci": "90", "kat_sirasi": 2,
+       "profil_ust": {"tip": "sivri", "olcu": "12"}, "koseler": {"sag_ust": "4", "sol_ust": "4"}}
+    ]}
+  ],
+  "ozellikler": [
+    {"tip": "dikis", "panel": "on", "kenarlar": ["sol", "sag"], "hedefler": ["arka"]},
+    {"tip": "citcit", "panel": "kapak", "x": "W/2", "y": "H*0.55 + 2", "boyut": "L20"},
+    {"tip": "logo_alani", "panel": "on", "x": "W/2", "y": "(H-8)/2", "genislik": "30", "yukseklik": "12", "etiket": "damga"}
+  ],
+  "icerikler": [{"tip": "kart", "adet": 6, "panel": "arka", "y": "1"}]
+}

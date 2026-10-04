@@ -1,111 +1,125 @@
-# Şablon — parametrik kalıp üretici
+# Şablon — yaratıcı, mm hassasiyetli kalıp tasarım aracı
 
-Etsy'de satılacak PDF kalıplar (dikişsiz deri cüzdan, kartlık, karton kutu…) için
-**milimetre hassasiyetinde**, düzeltilebilir ve kendi kendini kontrol eden bir kalıp aracı.
+Etsy'de satılacak PDF kalıplar (deri kartlık, cüzdan, kılıf, karton kutu…) için:
+**tarif → birbirinden farklı tasarım fikirleri → milimetre hassasiyetinde kalıp →
+3B ön izleme → görselli yapım kitapçığı.**
 
 ```
-tarif ("4 kartlık dikişsiz cüzdan") ──► Claude: şablon + parametre seçimi
-                                            │
-                    ┌───────────────────────▼────────────────────────┐
-                    │  Parametrik geometri motoru (deterministik)     │
-                    │  mm cinsinden gerçek doğru/yay, katlama payları │
-                    └───────┬──────────────┬───────────────┬─────────┘
-                            ▼              ▼               ▼
-                     Kural kontrolleri  Montaj adımları  Montajlı ön izleme
-                     (kart sığar mı,    (katlama sırası,  (önden/arkadan/yan)
-                      kilit tutar mı…)   dağ/vadi katı)
-                            │
-   "burası uzun olmuş" ──► Claude: geri bildirim → parametre değişikliği → otomatik hata düzeltme
-                            │
-                            ▼
-        PDF A4 + US Letter (parçalı, hizalama işaretli) · tam boy PDF · SVG (Cricut/lazer) · DXF (CNC)
+"kapaklı, çıtçıtlı kartlık"                              "kapak biraz kısa olmuş"
+        │                                                          │
+        ▼                                                          ▼
+  Claude: N farklı tasarım ──► Tasarım dili (JSON) ◄── Claude: en küçük tutarlı değişiklik
+  (her seferinde farklı ilham        │
+   kıvılcımları + bilgi bankası)     ▼
+                     Katlama-farkındalıklı motor (deterministik, mm)
+                     · paneller + menteşeler + kat payı
+                     · 3B katlama → çıtçıt/dikiş/yarık karşılıkları otomatik hizalanır
+                     · malzemeye duyarlı kontroller (kart sığıyor mu, kapak kapanıyor mu…)
+                                     │  hata varsa Claude'a geri → onarım
+                                     ▼
+   PDF kitapçık (A4 + Letter + tam boy) · SVG · DXF · interaktif 3B (HTML) · ürün görselleri (PNG)
 ```
 
 ## Neden yapay zekâ doğrudan çizmiyor?
 
-Dil modelleri koordinat üretirken milimetre hatası yapabilir. Bu yüzden geometri **her zaman**
-parametrik şablon motorunda hesaplanır; Claude yalnızca hangi şablonun ve hangi değerlerin
-kullanılacağına karar verir ve "şurası uzun" gibi ifadeleri parametre değişikliğine çevirir.
-Sonuç: aynı parametreler → her seferinde birebir aynı, ölçüsü doğru kalıp. Tüm değerler
-şablonun güvenli aralığına kırpılır ve her değişiklik proje dosyasının geçmişine yazılır.
+Dil modelleri koordinat üretirken milimetre hatası yapabilir. Bu yüzden Claude **tasarlar**
+(hangi paneller, hangi kenardan kaç derece katlanır, çıtçıt nereye, cep nereye dikilir),
+geometriyi ise motor **hesaplar**. Claude'un yaratıcılığı ile motorun hassasiyeti birleşir:
+her tasarım derlenir, kontrol edilir; hata varsa bulgular Claude'a geri verilip onarılır.
 
 ## Kurulum
 
 ```bash
 pip install -e ".[dev]"
-export ANTHROPIC_API_KEY=...      # yalnızca tarif / duzelt / incele komutları için
+export ANTHROPIC_API_KEY=...      # fikir / duzelt / incele / ogren komutları için
 ```
 
 ## Kullanım
 
 ```bash
-sablon liste --detay                                   # şablonlar ve parametreleri
+# 1) Fikir üret (her çalıştırmada farklı ilham; aynı klasördekileri tekrarlamaz)
+sablon fikir "kapaklı, çıtçıtlı kartlık" -n 5 --malzeme crazy_horse
+#    → fikirler/01_....json ... + fikirler/koleksiyon.pdf (3B görselli karşılaştırma)
 
-# 1) Tariften başla (Claude)
-sablon tarif "6 kartlık, başparmak oyuklu dikişsiz deri kartlık, 1.6 mm deri" -o cuzdan.json
-#    ...veya elle:
-sablon yeni dikissiz_kartlik kart_sayisi=6 deri_kalinligi=1.6 -o cuzdan.json
+# 2) Beğendiğini düzelt
+sablon duzelt fikirler/03_zarf_kartlik.json "kapak biraz kısa, çıtçıt daha aşağıda olsun"
+sablon ayarla fikirler/03_zarf_kartlik.json kart_adet=8 kapak.yukseklik="H*0.6"
+sablon kontrol fikirler/03_zarf_kartlik.json
 
-# 2) Ölçüleri ve kontrolleri gör
-sablon kontrol cuzdan.json
+# 3) Ürünü canlandırıp kullanım risklerini bul (Claude)
+sablon incele fikirler/03_zarf_kartlik.json --uygula
 
-# 3) Düzelt
-sablon duzelt cuzdan.json "ön panel çok yüksek olmuş, kartların yarısı görünsün"   # Claude
-sablon ayarla cuzdan.json on_panel_orani=0.6                                       # elle
-sablon otomatik cuzdan.json                                                        # kural hatalarını gider
+# 4) Satışa hazır dosyalar
+sablon cikti fikirler/03_zarf_kartlik.json -d cikti/
 
-# 4) Ürüne dönüşümü canlandır, kullanım risklerini bul (Claude)
-sablon incele cuzdan.json            # --uygula: yüksek önemli önerileri uygular
+# Hazır örneklerle başlamak (API anahtarı gerekmez)
+sablon ornekler
+sablon yeni kapakli_citcitli_kartlik -o proje.json
 
-# 5) Satışa hazır dosyalar
-sablon cikti cuzdan.json -d cikti/
-sablon gecmis cuzdan.json
+# Kendi referans PDF'lerinden öğren (bilgi bankasına eklenir, sonraki tüm tasarımlarda kullanılır)
+sablon ogren referans1.pdf referans2.pdf
 ```
 
-`cikti` komutu şunları üretir:
+`cikti` komutunun ürettikleri:
 
 | Dosya | Ne için |
 |---|---|
-| `*_A4.pdf`, `*_Letter.pdf` | Ev yazıcısı. Kapak (50 mm + 2 inç ölçek testi), ölçüler, çizgi lejantı, sayfa birleştirme haritası, kontroller, montaj adımları, ardından ◆ hizalama işaretli parça sayfaları. Etsy alıcılarının çoğu ABD'de olduğu için **iki boyut da** verin. |
-| `*_tam_boy.pdf` | Tek sayfada tamamı (A0 plotter / fotokopici / matbaa). |
-| `*.svg` | 1:1 mm, katmanlı (cut / fold / stitch …) — Cricut, Glowforge, Inkscape. |
-| `*.dxf` | R12, mm, katmanlı — lazer kesim, CNC, CAD. |
-| `*_onizleme.svg` | Montajlı ürünün önden / arkadan / yandan ölçülü görünümü (Etsy görseli taslağı). |
+| `*_A4.pdf`, `*_Letter.pdf` | Satılacak kitapçık: kapakta 3B ürün görseli ve özet (ölçü, malzeme, zorluk, süre); ölçek testi; çizgi lejantı; sayfa birleştirme haritası; **malzeme listesi** (deri dm², ip boyu, çıtçıt…); **alet listesi**; **görselli yapım aşamaları**; tasarım kontrolleri; ◆ hizalama işaretli 1:1 kalıp sayfaları |
+| `*_tam_boy.pdf` | Tek sayfada kalıbın tamamı (plotter / matbaa / lazer) |
+| `*.svg` / `*.dxf` | 1:1 mm, katmanlı (kesim, kat, dikiş, delik…) — Cricut, lazer, CNC |
+| `*_3B.html` | Tarayıcıda döndürülebilen 3B model; kaydırıcıyla açınım ↔ bitmiş ürün katlama animasyonu, adım adım montaj |
+| `*_urun.png`, `*_arka.png`, `*_yari_acik.png`, `*_acinim.png` | Etsy listesi için ürün görselleri |
 
-## Şablonlar
+## Malzemeler
 
-| Anahtar | Ürün | Öne çıkan mühendislik detayları |
-|---|---|---|
-| `dikissiz_kartlik` | Tek parça dikişsiz deri kartlık | Kart sayısı × kart kalınlığından körük hesabı, deri kalınlığı katlama payı, dil-yarık kilidi (kafa > yarık), yarık ucu yırtılma önleyici delikler, katlanınca yarık ↔ dil hizası, başparmak oyuğu |
-| `dikisli_kartlik` | Gövde + 2 kademeli cep | Dikiş delikleri tüm parçalarda birebir örtüşür, zımba adımı hattı tam bölecek şekilde ayarlanır, iplik boyu, 3 kat kalınlık kontrolü |
-| `kutu` | Ters kilitli karton kutu | İç ölçüden panel ölçüsü (karton kalınlığı), ortak kenar → otomatik bigi, toz kapağı çakışma kontrolü, hangi kâğıda sığdığı |
+`vaketa` (bitkisel tabaklı, kalıplanır, perdahlanır), `crazy_horse` (yağlı-mumlu pull-up,
+yumuşak; nemlendirilmez, kenar boyası), `krom_nappa`, `karton`. Malzeme seçimi kontrolleri
+(ör. crazy horse'ta dikişsiz kilit zayıf → takviye), katlama/kenar/yapıştırma talimatlarını ve
+3B rengini değiştirir. Değerler `sablon/materials.py` içinde düzenlenebilir.
 
-## Kontroller ("olası kullanım zorlukları")
+## Tasarım dili (kısaca)
 
-Her şablon kendi kurallarını taşır; örnek (dikişsiz kartlık):
+Bir ürün; **parçalar** (ayrı kesilen deriler), her parçada bir **panel ağacı** (kök panel +
+kenarlarına menteşeyle bağlı çocuk paneller, kat açısı ve sırasıyla), **monte parçalar**
+(cep vb.: hangi panele, hangi yüze, hangi kenarlardan dikildiği), **özellikler** (çıtçıt,
+mıknatıs, dikiş, kilit yarığı, perçin, kayış yuvası, pencere, logo alanı) ve **içeriklerden**
+(kart, banknot) oluşur. Ölçüler değişkenli ifadeler olabilir: `"kart_g + S + 2 + 2*e"`.
+Ayrıntılar: [`sablon/bilgi/tasarim_dili.md`](sablon/bilgi/tasarim_dili.md), örnekler: `ornekler/`.
 
-- yan boşluk < 0.75 mm → **hata**: kartlar dolu ceple sıkışır
-- kilit kafası − yarık < 1.5 mm → **hata**: kilit kendiliğinden açılır; > 6 mm → takılmaz/yırtar
-- dil boynu < 5 × deri kalınlığı → **hata**: boyundan kopar
-- sağ/sol kilit kafaları arka panelde çakışıyor → **hata**
-- başparmak oyuğu yok ve kart taşmıyor → **uyarı**: kart çıkmaz
-- deri ≥ 1.6 mm → **bilgi**: kat yerlerini V-kanal ile inceltin
+Motorun "kafada kurduğu" şeyler:
 
-Her bulgu, düzeltmek için somut bir parametre önerisi taşır; `sablon otomatik` bunları uygular.
-`sablon incele` ise Claude'a ürünü kesimden 6 aylık kullanıma kadar canlandırtarak kuralların
-yakalayamadığı riskleri (aşınma, köşe yırtılması, alıcının yanlış anlayabileceği adımlar) buldurur.
+- **Kat payı**: her menteşeye `radyan(|açı|)·t/2` eklenir; panel ölçüleri bitmiş ölçüdür.
+- **Katlanınca hizalama**: çıtçıtın erkek parçası, katlanınca karşısına gelen panelde otomatik
+  konumlanır; dikiş delikleri üst üste gelen katlarda birebir aynı noktaya düşer; dikişsiz kilidin
+  yarığı dilin geçtiği yere kesilir.
+- **Ortak delik ızgarası**: kademeli ceplerde delikler gövdede ortak noktalara düşer; düşmezse
+  "şu cebi 1.5 mm kısaltın" gibi somut öneri verir.
+- **Hacim/çevre kuralı**: dikişli cebin iç genişliği ≥ kart + yığın kalınlığı + 1 mm; sırtı olmayan
+  kapak dolu hâlde kapanmaz; çıtçıt boşluğa düşüyorsa hata.
+- **Montaj sırası**: düzken yapılabilecekler (çıtçıt, cep dikişi) önce, katlama gerektiren dikişler
+  katlamadan sonra.
 
-## Yeni ürün tipi eklemek
+## Kendi PDF'lerinizden öğrenme
 
-`sablon/templates/` altına `Template` alt sınıfı yazın: `params`, `build()` (geometri),
-`measures()`, `checks()`, `assembly()`, `preview_svg()`; sonra `templates/__init__.py`'deki
-`REGISTRY`'ye ekleyin. Claude Code'a "çantam için şu ölçülerde şablon ekle" diyerek de
-yazdırabilirsiniz; testler (`pytest`) kesim hattının kapalı olduğunu ve PDF ölçeğini doğrular.
+`sablon ogren dosya.pdf` PDF'i Claude'a okutur; ölçü/pay kuralları, teknikler, tasarım motifleri
+ve talimat üslubunu `sablon/bilgi/kullanici/` altına yazar. Bu dosyalar sonraki tüm fikir, düzeltme
+ve incelemelerde bilgi bankasına eklenir. Başkalarının tasarımları birebir kopyalanmaz; genel
+dersler çıkarılır.
+
+## Testler
+
+```bash
+pytest
+```
+
+Testler kesim hatlarının kapalı olduğunu, katlanınca çıtçıt/dikiş karşılıklarının üst üste
+geldiğini, kademeli cep deliklerinin ortak olduğunu, PDF ölçeğinin 1:1 olduğunu ve Claude
+akışının (sahte istemciyle) doğrulama + onarım döngüsünü sınar.
 
 ## Gerçekçi sınırlar
 
-- Araç yalnızca katalogdaki ürün tiplerini üretir; tamamen yeni bir yapı (ör. fermuarlı çanta)
-  için önce şablonu eklenmelidir — tarif bu durumda "desteklenmiyor" der ve en yakınını önerir.
-- Deri doğal bir malzemedir: esneme, kalınlık farkı ve tabaklama türü sonucu etkiler.
-  Satıştan önce **en az bir fiziksel prototip** kesip kontrol edin; gerekirse `duzelt` ile düzeltin.
-- Alıcının yazıcısı "sayfaya sığdır" ile basarsa ölçek bozulur — PDF'teki ölçek karesi bunun için.
+- Paneller dikdörtgen tabanlıdır (köşe yuvarlatma, şev, kavis/sivri/oyuk/yarım daire uçlarla).
+  Serbest eğrili 3B formlar (ör. kalıplanmış bombeli çanta) henüz yok.
+- 3B görsel, deriyi düz levha olarak gösterir; kabarma ve esneme yaklaşık temsil edilir.
+- Deri doğal bir malzemedir: satıştan önce **mutlaka bir fiziksel prototip** yapın.
+- İnteraktif 3B dosyası three.js'i internetten (jsDelivr) yükler.

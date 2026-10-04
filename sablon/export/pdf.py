@@ -10,6 +10,7 @@ Koordinatlar mm'den pt'ye 72/25.4 katsayısıyla birebir dönüştürülür.
 from __future__ import annotations
 
 import math
+import os
 import string
 
 from reportlab.lib.colors import Color, HexColor
@@ -150,40 +151,84 @@ class _Writer:
         self.y -= 1
 
 
-def _info_pages(c: Canvas, tpl, pw: float, ph: float, tiles: list[list[str]] | None, edition: str):
+# --------------------------------------------------------------------------------
+# Kitapçık (bilgi) sayfaları
+# --------------------------------------------------------------------------------
+def _img(c: Canvas, im, x: float, y: float, w: float, h: float | None = None):
+    """PIL görüntüsünü (x, y) sol-alt köşeye, w mm genişlikte yerleştirir; yüksekliği döndürür."""
+    from reportlab.lib.utils import ImageReader
+    iw, ih = im.size
+    h = h if h is not None else w * ih / iw
+    k = min(w / iw, h / ih)
+    dw, dh = iw * k, ih * k
+    c.drawImage(ImageReader(im), (x + (w - dw) / 2) * MM, y * MM, dw * MM, dh * MM)
+    return dh
+
+
+def _booklet(c: Canvas, doc, pw: float, ph: float, tiles: list[list[str]] | None, edition: str):
+    """Kapak, ölçek/lejant, malzeme-alet, yapım aşamaları, kontroller."""
+    d = doc.design
+    ins = doc.instructions
     w = _Writer(c, pw, ph)
-    w.heading(tpl.title, 7.0)
-    w.para(tpl.description, 3.6)
-    w.para(f"Malzeme: {tpl.material}", 3.6)
-    w.para(f"Baskı: {edition}. Yazıcıda 'Gerçek boyut / %100 / Actual size' seçin, 'Sayfaya sığdır' KAPALI olsun. "
-           "Basınca aşağıdaki kareleri cetvelle ölçün; 50 mm değilse kalıbı kullanmayın.", 3.4)
-    w.y -= 2
+    # --- Kapak
+    w.heading(d.ad, 8.0)
+    if d.konsept:
+        w.para(d.konsept, 3.6, color="#444444")
+    hero = doc.images.get("hero")
+    if hero is not None:
+        _img(c, hero, 15, w.y - 105, pw - 30, 105)
+        w.y -= 113
+    wf, hf, df = doc.size
+    stars = "★" * ins.difficulty + "☆" * (5 - ins.difficulty)
+    facts = [("Bitmiş ölçü", f"{wf:.0f} × {hf:.0f} × {df:.0f} mm"),
+             ("Malzeme", f"{doc.material.ad}, {doc.t:g} mm"),
+             ("Zorluk", stars), ("Tahmini süre", f"~{ins.hours:g} saat"),
+             ("Parça", ", ".join(f"{p.ad or k} ×{p.adet}" for k, p in doc.built.parts.items())),
+             ("Baskı", edition)]
+    for k, v in facts:
+        w.need(6)
+        c.setFont(w.bold, 3.5 * MM)
+        c.setFillColor(HexColor("#5a3a1e"))
+        c.drawString(15 * MM, w.y * MM, k)
+        c.setFont(w.font, 3.5 * MM)
+        c.setFillColor(HexColor("#222222"))
+        c.drawString(55 * MM, w.y * MM, v)
+        w.y -= 5.6
+    flat = doc.images.get("flat")
+    if flat is not None and w.y > 75:
+        hgt = min(w.y - 20, 70)
+        _img(c, flat, 15, w.y - hgt - 2, pw - 30, hgt)
+        c.setFont(w.font, 2.8 * MM)
+        c.setFillColor(HexColor("#666666"))
+        c.drawCentredString(pw / 2 * MM, (w.y - hgt - 6) * MM, "Açınım (kesilmiş hâli) — kalıp sayfaları sonda")
+    c.showPage()
+
+    # --- Ölçek ve lejant
+    w = _Writer(c, pw, ph)
+    w.heading("Baskı ve ölçek kontrolü", 5.5)
+    w.para("Yazıcıda 'Gerçek boyut / %100 / Actual size' seçin, 'Sayfaya sığdır' KAPALI olsun. Basınca aşağıdaki "
+           "kareleri cetvelle ölçün; 50 mm (2 inç) değilse kalıbı kullanmayın.", 3.4)
     w.need(60)
     _test_square(c, 15, w.y - 52)
     w.y -= 60
-
-    w.heading("Ana ölçüler", 4.6)
-    for m in tpl.measures().values():
-        w.para(f"• {m.label}: {m.value:.1f} {m.unit}" if m.unit != "adet" else f"• {m.label}: {m.value:.0f}", 3.3, 2)
-
     w.heading("Çizgi türleri", 4.6)
     for kind in (Kind.CUT, Kind.SLIT, Kind.FOLD, Kind.STITCH, Kind.HOLE, Kind.GUIDE):
         w.need(6)
         st = STYLE[kind]
         c.setStrokeColor(st["color"])
         c.setLineWidth(st["width"] * MM * 1.5)
-        c.setDash([d * MM for d in st["dash"]] if st["dash"] else [])
+        c.setDash([dd * MM for dd in st["dash"]] if st["dash"] else [])
         c.line(17 * MM, (w.y + 1) * MM, 32 * MM, (w.y + 1) * MM)
         c.setDash([])
         c.setFillColor(HexColor("#222222"))
         c.setFont(w.font, 3.3 * MM)
         c.drawString(36 * MM, w.y * MM, KIND_LABEL_TR[kind])
         w.y -= 5.5
-
+    w.para("Kat etiketleri: 'vadi' kat iç (süet) yüzleri birbirine yaklaştırır; 'dağ' kat dışa doğru katlanır. "
+           "Çizimde görünen yüz derinin iç (süet) yüzüdür.", 3.2)
     if tiles:
         w.heading("Sayfa birleştirme haritası", 4.6)
-        w.para("Her sayfayı çerçeve çizgisinden kesin (veya kenarı katlayın), ◆ işaretlerini üst üste getirip bantlayın. "
-               "Sayfa kodları sütun harfi + satır numarasıdır.", 3.3)
+        w.para("Her sayfayı çerçeve çizgisinden kesin (veya kenarı katlayın), ◆ işaretlerini üst üste getirip bantlayın.", 3.3)
         rows, cols = len(tiles), len(tiles[0])
         cell = min(14.0, (pw - 40) / cols)
         w.need(rows * cell * 0.8 + 6)
@@ -197,30 +242,59 @@ def _info_pages(c: Canvas, tpl, pw: float, ph: float, tiles: list[list[str]] | N
                 c.setFont(w.bold, 3 * MM)
                 c.drawCentredString((x + cell / 2) * MM, (y + cell * 0.3) * MM, tiles[r][col])
         w.y -= rows * cell * 0.8 + 6
-
     c.showPage()
+
+    # --- Malzeme ve aletler
     w = _Writer(c, pw, ph)
-    w.heading("Tasarım kontrolleri", 5.0)
+    w.heading("Malzeme listesi", 5.5)
+    for k, v in ins.bom:
+        w.para(f"• {k} — {v}", 3.4, 2)
+    w.heading("Aletler", 5.5)
+    for tl in ins.tools:
+        w.para(f"• {tl}", 3.4, 2)
+    w.heading(f"Malzeme hakkında: {doc.material.ad}", 4.6)
+    w.para(doc.material.aciklama, 3.3)
+    for n in doc.material.notlar:
+        w.para(n, 3.3)
+
+    # --- Yapım aşamaları
+    w.heading("Yapım aşamaları", 5.5)
+    for i, st in enumerate(ins.steps, 1):
+        im = doc.images.get(f"step{i}")
+        need = 12 + (55 if im is not None else 0)
+        w.need(need)
+        w.heading(f"{i}. {st.title}", 4.3)
+        for t in st.text:
+            w.para(t, 3.3, 3)
+        if im is not None:
+            w.need(58)
+            _img(c, im, 15 + (pw - 30) * 0.15, w.y - 54, (pw - 30) * 0.7, 52)
+            c.setFont(w.font, 2.8 * MM)
+            c.setFillColor(HexColor("#666666"))
+            c.drawCentredString(pw / 2 * MM, (w.y - 57) * MM, (st.image or {}).get("caption", ""))
+            w.y -= 61
+    c.showPage()
+
+    # --- Kontroller
+    w = _Writer(c, pw, ph)
+    w.heading("Tasarım kontrolleri", 5.5)
     colors = {"hata": "#c0392b", "uyari": "#b9770e", "bilgi": "#1e6b3a"}
     tags = {"hata": "HATA", "uyari": "UYARI", "bilgi": "BİLGİ"}
-    for f in tpl.checks():
+    for f in doc.findings:
         w.para(f"[{tags[f.level]}] {f.message}", 3.4, 0, colors[f.level])
-    w.heading("Montaj adımları", 5.0)
-    for i, s in enumerate(tpl.assembly(), 1):
-        w.para(f"{i}. {s}", 3.4)
     c.showPage()
 
 
 def _tile_labels(rows: int, cols: int) -> list[list[str]]:
     letters = string.ascii_uppercase
-    # satır 1 en üstte olsun
     return [[f"{letters[col % 26]}{r + 1}" for col in range(cols)] for r in range(rows)]
 
 
-def write_pdf(tpl, path: str, paper: str = "A4", include_info: bool = True) -> dict:
-    pattern: Pattern = tpl.build()
+def write_pdf(doc, path: str, paper: str = "A4", include_info: bool = True) -> dict:
+    """doc: export.document.Document (tasarım, kalıp parçaları, talimatlar, görseller)."""
     font, bold = pdf_fonts()
-    placed = pattern.layout(max_width=600.0 if paper == "full" else 380.0)
+    title = doc.design.ad
+    placed = Pattern(title, doc.pieces).layout(max_width=600.0 if paper == "full" else 380.0)
     ex0, ey0, ex1, ey1 = Pattern.extent(placed)
     ey0 -= 8  # parça adı yazısı için
     W, H = ex1 - ex0, ey1 - ey0
@@ -229,9 +303,9 @@ def write_pdf(tpl, path: str, paper: str = "A4", include_info: bool = True) -> d
         m = 15.0
         pw, ph = W + 2 * m, H + 2 * m + 12
         c = Canvas(path, pagesize=(210 * MM, 297 * MM))
-        c.setTitle(tpl.title)
+        c.setTitle(title)
         if include_info:
-            _info_pages(c, tpl, 210, 297, None, "Tek sayfa tam boy (plotter / matbaa / lazer)")
+            _booklet(c, doc, 210, 297, None, "Tek sayfa tam boy (plotter / matbaa / lazer)")
         c.setPageSize((pw * MM, ph * MM))
         c.saveState()
         c.translate((m - ex0) * MM, (m - ey0) * MM)
@@ -239,29 +313,28 @@ def write_pdf(tpl, path: str, paper: str = "A4", include_info: bool = True) -> d
         c.restoreState()
         c.setFont(font, 3 * MM)
         c.setFillColor(HexColor("#000000"))
-        c.drawString(m * MM, (ph - 9) * MM, f"{tpl.title} — 1:1 ölçek — 10 mm:")
-        sx = m + c.stringWidth(f"{tpl.title} — 1:1 ölçek — 10 mm:", font, 3 * MM) / MM + 3
+        head = f"{title} — 1:1 ölçek — 10 mm:"
+        c.drawString(m * MM, (ph - 9) * MM, head)
+        sx = m + c.stringWidth(head, font, 3 * MM) / MM + 3
         c.setLineWidth(0.4 * MM)
         c.line(sx * MM, (ph - 8.5) * MM, (sx + 10) * MM, (ph - 8.5) * MM)
         c.showPage()
         c.save()
-        return {"pages": "1 (+bilgi)" if include_info else 1, "size_mm": (round(pw, 1), round(ph, 1))}
+        return {"pages": "1 (+kitapçık)" if include_info else 1, "size_mm": (round(pw, 1), round(ph, 1))}
 
     pw, ph = PAPERS[paper]
     tw, th = pw - 2 * MARGIN, ph - 2 * MARGIN - 8  # üstte başlık şeridi
     cols, rows = max(1, math.ceil(W / tw)), max(1, math.ceil(H / th))
-    # kalıbı döşeme ızgarasında ortala
     ox = ex0 - (cols * tw - W) / 2
     oy = ey0 - (rows * th - H) / 2
     labels = _tile_labels(rows, cols)
     c = Canvas(path, pagesize=(pw * MM, ph * MM))
-    c.setTitle(tpl.title)
+    c.setTitle(title)
     if include_info:
-        _info_pages(c, tpl, pw, ph, labels, f"{paper}, {rows * cols} kalıp sayfası")
+        _booklet(c, doc, pw, ph, labels, f"{paper}, {rows * cols} kalıp sayfası")
 
     for r in range(rows):
         for col in range(cols):
-            # r=0 üst satır
             tx0 = ox + col * tw
             ty0 = oy + (rows - 1 - r) * th
             c.saveState()
@@ -271,7 +344,6 @@ def write_pdf(tpl, path: str, paper: str = "A4", include_info: bool = True) -> d
             c.translate((MARGIN - tx0) * MM, (MARGIN - ty0) * MM)
             draw_pieces(c, placed)
             c.restoreState()
-            # çerçeve + hizalama elmasları
             c.setDash([])
             c.setStrokeColor(Color(0.6, 0.6, 0.6))
             c.setLineWidth(0.15 * MM)
@@ -279,7 +351,6 @@ def write_pdf(tpl, path: str, paper: str = "A4", include_info: bool = True) -> d
             c.setFillColor(Color(0.55, 0.55, 0.55))
             for (x, y) in _diamond_points(tw, th):
                 _diamond(c, MARGIN + x, MARGIN + y)
-            # başlık şeridi
             c.setFillColor(HexColor("#000000"))
             c.setFont(bold, 4 * MM)
             c.drawString(MARGIN * MM, (ph - MARGIN - 4.5) * MM, labels[r][col])
@@ -290,8 +361,7 @@ def write_pdf(tpl, path: str, paper: str = "A4", include_info: bool = True) -> d
             if col > 0: nb.append(f"← {labels[r][col - 1]}")
             if col < cols - 1: nb.append(f"→ {labels[r][col + 1]}")
             c.drawString((MARGIN + 12) * MM, (ph - MARGIN - 4.5) * MM,
-                         f"{tpl.title} · sayfa {r * cols + col + 1}/{rows * cols}" + (f" · komşular: {'  '.join(nb)}" if nb else ""))
-            # 10 mm ölçek çubuğu
+                         f"{title} · sayfa {r * cols + col + 1}/{rows * cols}" + (f" · komşular: {'  '.join(nb)}" if nb else ""))
             c.setLineWidth(0.4 * MM)
             c.line((pw - MARGIN - 10) * MM, (ph - MARGIN - 4) * MM, (pw - MARGIN) * MM, (ph - MARGIN - 4) * MM)
             c.setFont(font, 2.2 * MM)
@@ -318,3 +388,47 @@ def _diamond(c: Canvas, x: float, y: float, s: float = 2.5):
     p.lineTo((x - s) * MM, y * MM)
     p.close()
     c.drawPath(p, stroke=0, fill=1)
+
+
+def write_contact_sheet(docs: list, path: str, brief: str = "") -> None:
+    """Fikirleri karşılaştırma sayfası: her fikir için 3B görsel, açınım, kısa bilgi (A4 yatay, sayfada 2 fikir)."""
+    font, bold = pdf_fonts()
+    pw, ph = 297.0, 210.0
+    c = Canvas(path, pagesize=(pw * MM, ph * MM))
+    c.setTitle("Tasarım fikirleri")
+    for k, (src, doc) in enumerate(docs):
+        slot = k % 2
+        if slot == 0:
+            if k:
+                c.showPage()
+            c.setFont(bold, 5 * MM)
+            c.setFillColor(HexColor("#2b2118"))
+            c.drawString(12 * MM, (ph - 14) * MM, "Tasarım fikirleri" + (f" — {brief}" if brief else ""))
+        x0 = 12 + slot * (pw - 24) / 2
+        colw = (pw - 24) / 2 - 6
+        y = ph - 24
+        c.setFont(bold, 4.2 * MM)
+        c.setFillColor(HexColor("#5a3a1e"))
+        c.drawString(x0 * MM, y * MM, f"{k + 1}. {doc.design.ad}")
+        y -= 3
+        hero = doc.images.get("hero")
+        if hero is not None:
+            _img(c, hero, x0, y - 62, colw, 62)
+        y -= 66
+        flat = doc.images.get("flat")
+        if flat is not None:
+            _img(c, flat, x0 + colw * 0.2, y - 34, colw * 0.6, 34)
+        y -= 38
+        w, h, d = doc.size
+        n_err = sum(f.level == "hata" for f in doc.findings)
+        n_warn = sum(f.level == "uyari" for f in doc.findings)
+        lines = [f"{doc.material.ad}, {doc.t:g} mm · {w:.0f}×{h:.0f}×{d:.0f} mm · zorluk {doc.instructions.difficulty}/5 · "
+                 f"~{doc.instructions.hours:g} sa",
+                 f"Kontroller: {n_err} hata, {n_warn} uyarı · dosya: {os.path.basename(src)}"]
+        c.setFont(font, 3.0 * MM)
+        c.setFillColor(HexColor("#222222"))
+        for ln in lines + _wrap(doc.design.konsept, font, 3.0, colw, c)[:6]:
+            c.drawString(x0 * MM, y * MM, ln)
+            y -= 4.2
+    c.showPage()
+    c.save()

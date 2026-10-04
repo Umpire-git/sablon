@@ -1,0 +1,188 @@
+{
+  "ad": "Kademeli Cepli İnce Kartlık",
+  "konsept": "Gövdenin iki yüzüne monte edilmiş üç kademeli cep. Cepler düzken dikildiği için yapımı kolay, ürün çok ince kalır. Cep yükseklikleri zımba adımının katı seçildi: tüm dikişler gövdede ortak deliklerden geçer.",
+  "kategori": "kartlik",
+  "malzeme": "vaketa",
+  "kalinlik": "1.0",
+  "renk": "#9a5b2e",
+  "degiskenler": [
+    {
+      "ad": "e",
+      "deger": "3.5",
+      "aciklama": "dikiş kenar payı"
+    },
+    {
+      "ad": "S",
+      "deger": "2*kart_k",
+      "aciklama": "cep başına 2 kart"
+    },
+    {
+      "ad": "W",
+      "deger": "kart_g + S + 2 + 2*e",
+      "aciklama": "genişlik (çevre kuralı)"
+    },
+    {
+      "ad": "H",
+      "deger": "kart_y + e + 4",
+      "aciklama": "gövde yüksekliği"
+    },
+    {
+      "ad": "p",
+      "deger": "3.85",
+      "aciklama": "zımba adımı"
+    },
+    {
+      "ad": "r",
+      "deger": "6",
+      "aciklama": "köşe yarıçapı"
+    },
+    {
+      "ad": "h1",
+      "deger": "r + e + 10*p",
+      "aciklama": "arka cep (yan dikiş boyu adımın katı → delikler ortak)"
+    },
+    {
+      "ad": "h2",
+      "deger": "r + e + 7*p",
+      "aciklama": "ön cep (3 adım alçak)"
+    }
+  ],
+  "parcalar": [
+    {
+      "id": "govde",
+      "ad": "Gövde",
+      "adet": 1,
+      "paneller": [
+        {
+          "id": "govde_p",
+          "ad": "Gövde",
+          "genislik": "W",
+          "yukseklik": "H",
+          "koseler": {
+            "sol_alt": "r",
+            "sag_alt": "r",
+            "sag_ust": "r",
+            "sol_ust": "r"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cep_arka",
+      "ad": "Arka cep",
+      "adet": 1,
+      "montaj": {
+        "ana_panel": "govde_p",
+        "x": "0",
+        "y": "0",
+        "yuz": "ic",
+        "dikis_kenarlari": [
+          "sol",
+          "alt",
+          "sag"
+        ]
+      },
+      "paneller": [
+        {
+          "id": "cep_arka_p",
+          "ad": "Arka cep",
+          "genislik": "W",
+          "yukseklik": "h1",
+          "koseler": {
+            "sol_alt": "r",
+            "sag_alt": "r"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cep_on",
+      "ad": "Ön cep",
+      "adet": 1,
+      "montaj": {
+        "ana_panel": "govde_p",
+        "x": "0",
+        "y": "0",
+        "yuz": "ic",
+        "dikis_kenarlari": [
+          "sol",
+          "alt",
+          "sag"
+        ]
+      },
+      "paneller": [
+        {
+          "id": "cep_on_p",
+          "ad": "Ön cep",
+          "genislik": "W",
+          "yukseklik": "h2",
+          "koseler": {
+            "sol_alt": "r",
+            "sag_alt": "r"
+          },
+          "profil_ust": {
+            "tip": "oyuk",
+            "olcu": "9"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cep_dis",
+      "ad": "Dış cep",
+      "adet": 1,
+      "montaj": {
+        "ana_panel": "govde_p",
+        "x": "0",
+        "y": "0",
+        "yuz": "dis",
+        "dikis_kenarlari": [
+          "sol",
+          "alt",
+          "sag"
+        ]
+      },
+      "paneller": [
+        {
+          "id": "cep_dis_p",
+          "ad": "Dış cep",
+          "genislik": "W",
+          "yukseklik": "h1",
+          "koseler": {
+            "sol_alt": "r",
+            "sag_alt": "r"
+          },
+          "daralma": "0"
+        }
+      ]
+    }
+  ],
+  "ozellikler": [
+    {
+      "tip": "logo_alani",
+      "panel": "cep_dis_p",
+      "x": "W/2",
+      "y": "h1/2",
+      "genislik": "28",
+      "yukseklik": "10",
+      "etiket": "damga"
+    }
+  ],
+  "icerikler": [
+    {
+      "tip": "kart",
+      "adet": 2,
+      "panel": "cep_arka_p"
+    },
+    {
+      "tip": "kart",
+      "adet": 2,
+      "panel": "cep_on_p"
+    },
+    {
+      "tip": "kart",
+      "adet": 2,
+      "panel": "cep_dis_p"
+    }
+  ]
+}

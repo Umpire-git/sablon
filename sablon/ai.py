@@ -1,104 +1,108 @@
-"""Claude ile doğal dil arayüzü.
+"""Claude ile yaratıcı tasarım, düzeltme, inceleme ve PDF'lerden öğrenme.
 
-İlke: Claude ASLA koordinat/geometri üretmez. Yalnızca
-  1) tarifi bir şablona ve parametre değerlerine çevirir,
-  2) "şurası uzun olmuş" gibi geri bildirimleri parametre değişikliklerine çevirir,
-  3) türetilmiş ölçüler, kural kontrolleri ve montaj adımları üzerinden ürünü
-     "kafasında kurup" kullanım sorunlarını yorumlar.
-Geometri her zaman deterministik şablon motorunda üretilir; böylece mm hassasiyeti
-yapay zekânın hatasına bağlı değildir. Tüm değerler şablonun sınırlarına kırpılır.
+İlke: Claude geometri çizmez; tasarım dilinde (design.Tasarim) paneller, menteşeler ve
+özellikler tanımlar. Motor (engine) mm hassasiyetinde geometriyi üretir ve kontrol eder;
+hata çıkarsa bulgular Claude'a geri verilip onarım istenir. Böylece hem yaratıcılık
+hem ölçü doğruluğu korunur.
 """
 from __future__ import annotations
 
+import base64
+import glob
 import json
 import os
+import random
 
 from pydantic import BaseModel, Field
 
-from .project import Change, Project
-from .templates import REGISTRY, Template
+from .checks import run_checks
+from .design import Tasarim, from_dict
+from .engine import BuildError, build
 
 MODEL = os.environ.get("SABLON_MODEL", "claude-opus-5-5")
-
-SYSTEM = """Sen deri, kâğıt/karton ve tekstil ürünlerinde uzman bir endüstriyel kalıp (şablon) tasarımcısısın.
-Kullanıcı Etsy'de satılacak PDF kalıplar hazırlıyor. Kalıplar, aşağıdaki parametrik şablon motoruyla
-milimetre hassasiyetinde üretilir. Sen geometri ÇİZMEZSİN; yalnızca şablon seçer ve parametre değerlerini
-belirlersin. Her şey mm cinsindendir (aksi belirtilmedikçe).
-
-Kurallar:
-- Yalnızca katalogdaki şablon anahtarlarını ve parametre adlarını kullan; sınırların dışına çıkma.
-- Kullanıcının gündelik ifadelerini ("biraz", "çok", "burası") somut mm değişikliklerine çevir; ilişkileri
-  (relations) kullanarak hangi parametrenin hangi ölçüyü etkilediğini hesapla.
-- Fiziksel gerçekliği düşün: malzeme kalınlığı, katlanma payları, kartın girip çıkması, kilidin tutması,
-  dikiş kenar mesafesi, parmakla tutulabilirlik, yırtılma noktaları.
-- Emin olmadığın şeyi varsayım olarak açıkça yaz. Gerçekten belirsizse soru sor.
-- Tüm açıklamaları Türkçe yaz."""
+HERE = os.path.dirname(__file__)
+ROOT = os.path.dirname(HERE)
 
 
-def catalog() -> str:
-    parts = []
-    for t in REGISTRY.values():
-        ps = "\n".join(
-            f"    - {p.name} ({p.label}; {p.unit}; varsayılan {p.default}; aralık {p.min}–{p.max}"
-            f"{'; tamsayı' if p.integer else ''}){' — ' + p.help if p.help else ''}"
-            for p in t.params
-        )
-        parts.append(
-            f"## {t.key}: {t.title}\n{t.description}\nMalzeme: {t.material}\n"
-            f"İlişkiler:\n{getattr(t, 'relations', '')}\nParametreler:\n{ps}"
-        )
-    return "\n\n".join(parts)
-
-
-def state(tpl: Template) -> str:
-    return json.dumps(tpl.summary(), ensure_ascii=False, indent=1)
-
-
-# --- yapılandırılmış çıktı şemaları ------------------------------------------
-class ParamValue(BaseModel):
-    name: str
-    value: float
-
-
-class ParamChange(BaseModel):
-    name: str
-    new_value: float
-    reason: str
-
-
-class DesignChoice(BaseModel):
-    supported: bool = Field(description="Katalogdaki bir şablon bu isteği karşılıyor mu")
-    template: str = Field(description="Seçilen şablon anahtarı (desteklenmiyorsa en yakını)")
-    name: str = Field(description="Ürün için kısa, satışa uygun Türkçe ad")
-    params: list[ParamValue] = Field(description="Yalnızca varsayılandan farklı olması gereken parametreler")
-    assumptions: list[str]
-    missing_capability: str = Field(description="Desteklenmiyorsa eksik olan özellik; destekleniyorsa boş")
-
-
-class Revision(BaseModel):
-    understood_as: str = Field(description="Geri bildirimi nasıl yorumladığın (hangi ölçü, ne kadar)")
-    changes: list[ParamChange]
-    question: str = Field(description="Geri bildirim gerçekten belirsizse kullanıcıya soru; değilse boş")
-
-
-class Risk(BaseModel):
-    severity: str = Field(description="yuksek | orta | dusuk")
-    title: str
-    detail: str = Field(description="Ürün kullanılırken ne olur, neden olur")
-    changes: list[ParamChange] = Field(description="Önerilen parametre değişiklikleri (yoksa boş)")
-
-
-class Review(BaseModel):
-    product_story: str = Field(description="Kalıbın kesilip katlanıp/dikilip kullanılmasının adım adım zihinsel canlandırması")
-    risks: list[Risk]
-    selling_tips: list[str] = Field(description="Etsy listesi ve PDF için öneriler")
-
-
-# --- Claude çağrısı ---------------------------------------------------------------
 class AIError(RuntimeError):
     pass
 
 
+# --- bilgi bankası --------------------------------------------------------------------
+def knowledge() -> str:
+    parts = []
+    for path in sorted(glob.glob(os.path.join(HERE, "bilgi", "*.md"))) + sorted(glob.glob(os.path.join(HERE, "bilgi", "kullanici", "*.md"))):
+        with open(path, encoding="utf-8") as f:
+            parts.append(f.read())
+    from . import materials as M
+    mats = "\n".join(f"- {m.key}: {m.ad}. {m.aciklama} Önerilen kalınlık {m.kalinlik_onerilen[0]}–{m.kalinlik_onerilen[1]} mm. "
+                     f"Sert/kilit tutar: {'evet' if m.sert else 'hayır'}. Katlama: {m.katlama}" for m in M.MATERIALS.values())
+    snaps = ", ".join(f"{s.key} (şapka Ø{s.sapka_cap}, kavrama ~{s.kavrama} mm)" for s in M.SNAPS.values())
+    parts.append(f"# Malzemeler\n{mats}\n\n# Çıtçıt boyutları\n{snaps}")
+    ex = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "ornekler", "*.json"))):
+        with open(path, encoding="utf-8") as f:
+            d = from_dict(json.load(f))
+        ex.append(f"## Örnek: {os.path.basename(path)}\n```json\n{json.dumps(d.model_dump(), ensure_ascii=False)}\n```")
+    parts.append("# Doğrulanmış örnek tasarımlar (biçim ve yaklaşım için; kopyalama, esinlen)\n" + "\n\n".join(ex))
+    return "\n\n".join(parts)
+
+
+SYSTEM_HEAD = """Sen yaratıcı ve titiz bir deri ürün / ambalaj tasarımcısı ve endüstriyel kalıpçısın. Kullanıcı Etsy'de
+satılacak PDF kalıplar hazırlıyor. Tasarımlarını aşağıdaki tasarım dilinde (JSON) ifade edersin; parametrik motor
+bunları milimetre hassasiyetinde kalıba, 3B modele, kontrollere ve yapım talimatına çevirir.
+
+Çalışma ilkelerin:
+- Ürünü kafanda gerçekten kur: kesim, katlama sırası, dikiş, içine kart girip çıkması, kapağın kapanması,
+  6 ay günlük kullanım. Her ölçünün fiziksel bir gerekçesi olsun.
+- Yaratıcı ol ama yapılabilir kal: her tasarım el aletleriyle üretilebilmeli.
+- Tutarlı kimlikler kullan; açınımda panel çakışmasından kaçın; kalınlık/hacim kurallarına uy.
+- Metinleri Türkçe yaz; ürün adları satışa uygun, kısa ve akılda kalıcı olsun."""
+
+
+def system_blocks() -> list[dict]:
+    return [{"type": "text", "text": SYSTEM_HEAD + "\n\n" + knowledge(), "cache_control": {"type": "ephemeral"}}]
+
+
+# --- şemalar ------------------------------------------------------------------------------
+class Fikirler(BaseModel):
+    tasarimlar: list[Tasarim]
+
+
+class Onarim(BaseModel):
+    tasarim: Tasarim
+    aciklama: str
+
+
+class Revizyon(BaseModel):
+    anlasilan: str = Field(description="Geri bildirimi nasıl yorumladığın: hangi ölçü, ne kadar, neden")
+    degisiklikler: list[str] = Field(description="Yapılan değişikliklerin kısa listesi")
+    soru: str = Field(description="Gerçekten belirsizse kullanıcıya soru; değilse boş")
+    tasarim: Tasarim
+
+
+class Risk(BaseModel):
+    onem: str = Field(description="yuksek | orta | dusuk")
+    baslik: str
+    detay: str = Field(description="Kullanımda ne olur, neden olur")
+    oneri: str = Field(description="Somut tasarım değişikliği (ölçü/özellik)")
+
+
+class Inceleme(BaseModel):
+    urun_hikayesi: str = Field(description="Kalıbın kesilip yapılıp kullanılmasının adım adım zihinsel canlandırması")
+    riskler: list[Risk]
+    satis_onerileri: list[str] = Field(description="Etsy listesi, fotoğraf ve PDF için öneriler")
+
+
+class Bilgi(BaseModel):
+    baslik: str
+    kurallar: list[str] = Field(description="Genellenebilir ölçü/pay/tolerans kuralları")
+    teknikler: list[str] = Field(description="Yapım teknikleri ve sıralama ipuçları")
+    tasarim_motifleri: list[str] = Field(description="Tasarım fikirleri/motifleri (birebir kopya değil, ilke olarak)")
+    talimat_uslubu: list[str] = Field(description="PDF talimatının anlatım biçimi, sayfa düzeni, alıcıya yönelik iyi uygulamalar")
+
+
+# --- Claude çağrısı ----------------------------------------------------------------------
 def _client():
     try:
         import anthropic
@@ -107,23 +111,24 @@ def _client():
     return anthropic.Anthropic()
 
 
-def _ask(prompt: str, schema: type[BaseModel], client=None):
+def _ask(content, schema: type[BaseModel], client=None, max_tokens: int = 64000, effort: str = "high"):
     import anthropic
 
     client = client or _client()
     try:
-        resp = client.beta.messages.parse(
+        with client.beta.messages.stream(
             model=MODEL,
-            max_tokens=16000,
-            system=SYSTEM,
+            max_tokens=max_tokens,
+            system=system_blocks(),
             thinking={"type": "adaptive"},
-            output_config={"effort": "high"},
+            output_config={"effort": effort},
             # Güvenlik sınıflandırıcısı reddederse istek sunucu tarafında yedek modelle yeniden çalışır.
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
-            messages=[{"role": "user", "content": prompt}],
+            messages=[{"role": "user", "content": content}],
             output_format=schema,
-        )
+        ) as stream:
+            msg = stream.get_final_message()
     except anthropic.AuthenticationError as e:
         raise AIError("Claude API anahtarı bulunamadı/geçersiz. ANTHROPIC_API_KEY ortam değişkenini ayarlayın.") from e
     except anthropic.RateLimitError as e:
@@ -132,75 +137,167 @@ def _ask(prompt: str, schema: type[BaseModel], client=None):
         raise AIError(f"Claude API hatası ({e.status_code}): {e.message}") from e
     except anthropic.APIConnectionError as e:
         raise AIError("Claude API'ye bağlanılamadı (ağ).") from e
-    if resp.stop_reason == "refusal":
+    if msg.stop_reason == "refusal":
         raise AIError("Model isteği yanıtlamayı reddetti.")
-    if resp.stop_reason == "max_tokens" or resp.parsed_output is None:
-        raise AIError("Model yanıtı eksik kaldı; isteği kısaltıp tekrar deneyin.")
-    return resp.parsed_output
+    if msg.stop_reason == "max_tokens":
+        raise AIError("Yanıt token sınırında kesildi; daha az fikir isteyin.")
+    parsed = getattr(msg, "parsed_output", None)
+    if parsed is not None:
+        return parsed
+    text = "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
+    try:
+        return schema.model_validate_json(text)
+    except Exception as e:
+        raise AIError(f"Model yanıtı şemaya uymadı: {e}") from e
 
 
-# --- üst düzey işlemler -------------------------------------------------------
-def design_from_description(text: str, client=None) -> tuple[Project, DesignChoice]:
-    prompt = (
-        f"# Şablon kataloğu\n{catalog()}\n\n# Kullanıcının tarifi\n{text}\n\n"
-        "En uygun şablonu seç ve parametreleri belirle. Kullanıcı ölçü vermediyse ürün tipine göre endüstri "
-        "standardı değerleri kullan ve varsayım olarak yaz."
-    )
-    choice: DesignChoice = _ask(prompt, DesignChoice, client)
-    key = choice.template if choice.template in REGISTRY else next(iter(REGISTRY))
-    proj = Project(template=key, name=choice.name, notes=list(choice.assumptions))
-    changes = [Change(pv.name, 0.0, pv.value, "tariften") for pv in choice.params
-               if any(p.name == pv.name for p in REGISTRY[key].params)]
-    proj.apply(changes, source="ai:tarif", request=text)
-    return proj, choice
+# --- doğrulama + onarım döngüsü -----------------------------------------------------------
+def evaluate(design: Tasarim) -> list:
+    """Tasarımı derler ve kontrol eder; bulgu listesi döner (hata varsa level='hata')."""
+    try:
+        b = build(design)
+    except BuildError as e:
+        return e.findings
+    return run_checks(b)
 
 
-def revise(project: Project, feedback: str, client=None) -> tuple[Revision, list[Change]]:
-    tpl = project.instance()
-    t = type(tpl)
-    prompt = (
-        f"# Şablon\n{t.key}: {t.title}\nİlişkiler:\n{getattr(t, 'relations', '')}\n"
-        f"Parametre sınırları: " + json.dumps({p.name: [p.min, p.max] for p in t.params}, ensure_ascii=False) +
-        f"\n\n# Mevcut durum (parametreler, türetilmiş ölçüler, kontrol bulguları)\n{state(tpl)}\n\n"
-        f"# Geçmiş değişiklikler\n{json.dumps(project.history[-5:], ensure_ascii=False)}\n\n"
-        f"# Kullanıcının geri bildirimi\n{feedback}\n\n"
-        "Geri bildirimi karşılayan en az sayıda parametre değişikliğini öner. Başka ölçüleri bozacaksa "
-        "(ör. kilit kafası çakışması) dengeleyici değişikliği de ekle."
-    )
-    rev: Revision = _ask(prompt, Revision, client)
-    if rev.question and not rev.changes:
-        return rev, []
-    names = {p.name for p in t.params}
-    applied = project.apply([Change(c.name, 0.0, c.new_value, c.reason) for c in rev.changes if c.name in names],
-                            source="ai:duzelt", request=feedback)
-    return rev, applied
+def _errors(findings) -> list:
+    return [f for f in findings if f.level == "hata"]
 
 
-def review(project: Project, client=None) -> Review:
-    tpl = project.instance()
-    t = type(tpl)
-    prompt = (
-        f"# Şablon\n{t.key}: {t.title}\n{t.description}\nMalzeme: {t.material}\n"
-        f"İlişkiler:\n{getattr(t, 'relations', '')}\n\n# Mevcut durum\n{state(tpl)}\n\n"
-        f"# Montaj adımları\n" + "\n".join(f"{i}. {s}" for i, s in enumerate(tpl.assembly(), 1)) +
-        "\n\nBu kalıbın gerçek ürüne dönüşümünü adım adım zihninde canlandır: kesim, katlama/dikiş, ilk kullanım, "
-        "6 ay günlük kullanım. Kural kontrollerinin yakalayamadığı kullanım zorluklarını ve dayanıklılık "
-        "risklerini bul; her biri için somut parametre değişikliği öner. Etsy alıcısının (yeni başlayan "
-        "zanaatkâr) kalıbı yanlış anlayabileceği noktaları da belirt."
-    )
-    return _ask(prompt, Review, client)
-
-
-def autofix(project: Project, max_rounds: int = 6) -> list[Change]:
-    """Kural motorunun 'hata' bulgularındaki önerileri, hata kalmayana dek uygular (AI gerektirmez)."""
-    applied: list[Change] = []
-    for _ in range(max_rounds):
-        errs = [f for f in project.instance().checks() if f.level == "hata" and f.suggestion]
+def repair(design: Tasarim, findings, client=None, rounds: int = 2, log=print) -> tuple[Tasarim, list]:
+    for _ in range(rounds):
+        errs = _errors(findings)
         if not errs:
             break
-        ch = [Change(k, 0.0, v, f.message) for f in errs for k, v in f.suggestion.items()]
-        got = project.apply(ch, source="otomatik-duzeltme")
-        if not got:
-            break
-        applied += got
-    return applied
+        warns = [f for f in findings if f.level == "uyari"]
+        prompt = (
+            "Bu tasarım motorda derlendiğinde aşağıdaki sorunlar çıktı. Tasarım fikrini ve karakterini koruyarak "
+            "HATALARIN hepsini, mümkünse uyarıları da gider. Tam tasarımı döndür.\n\n"
+            f"# Tasarım\n```json\n{json.dumps(design.model_dump(), ensure_ascii=False)}\n```\n\n"
+            "# Hatalar\n" + "\n".join(f"- {f.message}" for f in errs) +
+            ("\n\n# Uyarılar\n" + "\n".join(f"- {f.message}" for f in warns) if warns else "")
+        )
+        res: Onarim = _ask(prompt, Onarim, client, max_tokens=32000)
+        log(f"  onarım: {res.aciklama}")
+        design = res.tasarim
+        findings = evaluate(design)
+    return design, findings
+
+
+# --- üst düzey işlemler ------------------------------------------------------------------
+def _moves(k: int, rng: random.Random) -> list[str]:
+    with open(os.path.join(HERE, "bilgi", "tasarim_hamleleri.md"), encoding="utf-8") as f:
+        moves = [ln[2:].strip() for ln in f if ln.startswith("- ")]
+    return rng.sample(moves, min(k, len(moves)))
+
+
+def ideas(brief: str, n: int = 4, client=None, previous: list[str] | None = None, seed: int | None = None,
+          malzeme: str = "", log=print) -> list[tuple[Tasarim, list]]:
+    """Bir tariften birbirinden belirgin biçimde farklı n tasarım üretir, doğrular ve onarır."""
+    rng = random.Random(seed)
+    sparks = _moves(max(3, n + 1), rng)
+    axes = ["klasik ve satış garantili", "modern minimal", "yapısal olarak yenilikçi (alışılmadık katlama/kilit)",
+            "lüks detaylı", "üretimi en kolay (yeni başlayan için)", "deneysel / sanatsal"]
+    rng.shuffle(axes)
+    prompt = (
+        f"# İstek\n{brief}\n\n"
+        f"{n} adet BİRBİRİNDEN BELİRGİN BİÇİMDE FARKLI tasarım üret. Farklılık yapısal olsun (parça sayısı, katlama "
+        "mimarisi, kapanma mekanizması, cep düzeni, açılım yönü), yalnızca ölçü değil. İsteğin zorunlu koşullarına "
+        "(ör. 'kapaklı', 'çıtçıtlı') her tasarımda uy; geri kalanında özgür ol.\n"
+        f"Her tasarım için farklı bir yön benimse: {', '.join(axes[:n])}.\n"
+        f"Bu turun ilham kıvılcımları (en az birini cesurca kullan): {'; '.join(sparks)}.\n"
+        + (f"Varsayılan malzeme: {malzeme}.\n" if malzeme else "")
+        + ("\nDaha önce üretilenler (bunları TEKRARLAMA):\n" + "\n".join(f"- {p}" for p in previous) + "\n" if previous else "")
+        + "\nHer tasarımda: içerikleri (kart vb.) tanımla, kat_sirasi'nı montaj mantığına göre ver, konsepti 2-4 cümleyle "
+          "neyin farklı olduğunu anlatacak şekilde yaz."
+    )
+    log(f"Claude {n} fikir tasarlıyor (ilham: {', '.join(sparks[:3])})...")
+    res: Fikirler = _ask(prompt, Fikirler, client)
+    out = []
+    for d in res.tasarimlar:
+        f = evaluate(d)
+        if _errors(f):
+            log(f"'{d.ad}': {len(_errors(f))} hata, onarılıyor...")
+            d, f = repair(d, f, client, log=log)
+        out.append((d, f))
+    return out
+
+
+def revise(design: Tasarim, feedback: str, client=None, log=print) -> tuple[Revizyon, Tasarim, list]:
+    findings = evaluate(design)
+    prompt = (
+        f"# Mevcut tasarım\n```json\n{json.dumps(design.model_dump(), ensure_ascii=False)}\n```\n\n"
+        "# Motorun ölçüleri ve kontrolleri\n" + "\n".join(f"- [{f.level}] {f.message}" for f in findings) +
+        _measures_txt(design) +
+        f"\n\n# Kullanıcının geri bildirimi\n{feedback}\n\n"
+        "Geri bildirimi karşılayan en küçük tutarlı değişikliği yap (gerekirse bağlı ölçüleri de dengele). "
+        "Tasarımın geri kalanını olduğu gibi koru. Tam tasarımı döndür."
+    )
+    rev: Revizyon = _ask(prompt, Revizyon, client, max_tokens=32000)
+    new = rev.tasarim
+    f2 = evaluate(new)
+    if _errors(f2):
+        log("Değişiklik hataya yol açtı, onarılıyor...")
+        new, f2 = repair(new, f2, client, log=log)
+    return rev, new, f2
+
+
+def review(design: Tasarim, client=None) -> Inceleme:
+    findings = evaluate(design)
+    try:
+        from .instructions import make
+        steps = make(build(design)).steps
+        steps_txt = "\n".join(f"{i}. {s.title}: {' '.join(s.text)}" for i, s in enumerate(steps, 1))
+    except BuildError:
+        steps_txt = "(derlenemedi)"
+    prompt = (
+        f"# Tasarım\n```json\n{json.dumps(design.model_dump(), ensure_ascii=False)}\n```\n\n"
+        "# Kural kontrolleri\n" + "\n".join(f"- [{f.level}] {f.message}" for f in findings) + _measures_txt(design) +
+        f"\n\n# Üretilen yapım adımları\n{steps_txt}\n\n"
+        "Bu kalıbın gerçek ürüne dönüşümünü adım adım zihninde canlandır: kesim, katlama/dikiş, ilk kullanım, 6 ay "
+        "günlük kullanım. Kural kontrollerinin yakalayamadığı kullanım zorluklarını, dayanıklılık risklerini ve yeni "
+        "başlayan bir Etsy alıcısının talimatta takılabileceği yerleri bul; her biri için somut öneri ver."
+    )
+    return _ask(prompt, Inceleme, client, max_tokens=32000)
+
+
+def learn_pdf(path: str, client=None) -> tuple[Bilgi, str]:
+    """Kullanıcının PDF'ini okuyup genellenebilir bilgiyi bilgi/kullanici/ altına yazar."""
+    with open(path, "rb") as f:
+        data = base64.standard_b64encode(f.read()).decode()
+    content = [
+        {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": data}},
+        {"type": "text", "text": (
+            "Bu, kullanıcının referans aldığı bir kalıp/talimat PDF'i. Genellenebilir bilgiyi çıkar: ölçü ve pay "
+            "kuralları, toleranslar, yapım sırası ve teknikler, tasarım motifleri (ilke olarak, birebir kopya değil), "
+            "talimat anlatım üslubu ve sayfa düzeni. Başkasının tasarımını çoğaltmaya yarayacak birebir ölçü listesi "
+            "çıkarma; kendi tasarımlarımızı geliştirmeye yarayacak dersleri yaz.")},
+    ]
+    info: Bilgi = _ask(content, Bilgi, client, max_tokens=16000)
+    name = os.path.splitext(os.path.basename(path))[0]
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in name)[:60]
+    out = os.path.join(HERE, "bilgi", "kullanici", f"{safe}.md")
+    md = [f"# {info.baslik}", f"_Kaynak: {os.path.basename(path)}_", ""]
+    for title, items in (("Kurallar", info.kurallar), ("Teknikler", info.teknikler),
+                         ("Tasarım motifleri", info.tasarim_motifleri), ("Talimat üslubu", info.talimat_uslubu)):
+        if items:
+            md += [f"## {title}"] + [f"- {x}" for x in items] + [""]
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        f.write("\n".join(md))
+    return info, out
+
+
+def _measures_txt(design: Tasarim) -> str:
+    try:
+        b = build(design)
+    except BuildError:
+        return ""
+    lines = [f"- {k} = {v:g}" for k, v in b.env.items()]
+    for pid in b.order:
+        p = b.panels[pid]
+        lines.append(f"- panel {pid}: {p.w:.1f} × {p.h:.1f} mm, açı {p.angle:g}°")
+    w, h, d = b.finished_size()
+    lines.append(f"- bitmiş ürün ≈ {w:.1f} × {h:.1f} × {d:.1f} mm")
+    return "\n\n# Hesaplanmış değerler\n" + "\n".join(lines)

@@ -1,73 +1,90 @@
-"""Proje dosyası: seçilen şablon + parametreler + değişiklik geçmişi (JSON)."""
+"""Proje dosyası: tasarım (JSON) + değişiklik geçmişi."""
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, field
 from datetime import datetime
 
-from .templates import Template, get
+from .design import Tasarim, from_dict
 
 
-@dataclass
-class Change:
-    param: str
-    old: float
-    new: float
-    reason: str = ""
+def load(path: str) -> tuple[Tasarim, list[dict]]:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    hist = data.pop("gecmis", [])
+    return from_dict(data), hist
 
 
-@dataclass
-class Project:
-    template: str
-    params: dict[str, float] = field(default_factory=dict)
-    name: str = ""
-    notes: list[str] = field(default_factory=list)
-    history: list[dict] = field(default_factory=list)
+def save(path: str, design: Tasarim, history: list[dict] | None = None) -> None:
+    os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+    data = design.model_dump()
+    data["gecmis"] = history or []
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    # --- G/Ç ---------------------------------------------------------------
-    @classmethod
-    def load(cls, path: str) -> "Project":
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        return cls(**data)
 
-    def save(self, path: str) -> None:
-        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(asdict(self), f, ensure_ascii=False, indent=2)
+def log(history: list[dict], source: str, request: str, changes: list[str]) -> None:
+    history.append({"zaman": datetime.now().isoformat(timespec="seconds"), "kaynak": source,
+                    "istek": request, "degisiklikler": changes})
 
-    # --- şablon --------------------------------------------------------------
-    @property
-    def cls(self) -> type[Template]:
-        return get(self.template)
 
-    def instance(self) -> Template:
-        return self.cls(self.params)
+def diff(a: Tasarim, b: Tasarim) -> list[str]:
+    """İki tasarım arasındaki alan değişikliklerini okunur liste olarak verir."""
+    out: list[str] = []
 
-    def resolved(self) -> dict[str, float]:
-        return self.cls.resolve(self.params)
+    def walk(x, y, path):
+        if isinstance(x, dict) and isinstance(y, dict):
+            for k in sorted(set(x) | set(y)):
+                walk(x.get(k), y.get(k), f"{path}.{k}" if path else k)
+        elif isinstance(x, list) and isinstance(y, list) and all(isinstance(i, dict) and "id" in i for i in x + y):
+            xm, ym = {i["id"]: i for i in x}, {i["id"]: i for i in y}
+            for k in xm.keys() - ym.keys():
+                out.append(f"- {path}[{k}] kaldırıldı")
+            for k in ym.keys() - xm.keys():
+                out.append(f"+ {path}[{k}] eklendi")
+            for k in xm.keys() & ym.keys():
+                walk(xm[k], ym[k], f"{path}[{k}]")
+        elif isinstance(x, list) and isinstance(y, list) and all(isinstance(i, dict) and "ad" in i for i in x + y) and path == "degiskenler":
+            xm, ym = {i["ad"]: i["deger"] for i in x}, {i["ad"]: i["deger"] for i in y}
+            for k in sorted(set(xm) | set(ym)):
+                if xm.get(k) != ym.get(k):
+                    out.append(f"~ değişken {k}: {xm.get(k)} → {ym.get(k)}")
+        elif x != y:
+            if isinstance(x, list) or isinstance(y, list):
+                out.append(f"~ {path}: liste değişti")
+            else:
+                out.append(f"~ {path}: {x} → {y}")
 
-    def apply(self, changes: list[Change], source: str, request: str = "") -> list[Change]:
-        """Değişiklikleri sınırlar içinde uygular; gerçekten uygulananları döndürür."""
-        cur = self.resolved()
-        applied: list[Change] = []
-        for ch in changes:
-            p = self.cls.param(ch.param)
-            new = p.clamp(ch.new)
-            if abs(new - cur[ch.param]) < 1e-9:
-                continue
-            note = ch.reason
-            if new != ch.new:
-                note = (note + " " if note else "") + f"(istenen {ch.new} → izin verilen aralık {p.min}–{p.max})"
-            applied.append(Change(ch.param, cur[ch.param], new, note))
-            cur[ch.param] = new
-        if applied:
-            self.params = cur
-            self.history.append({
-                "time": datetime.now().isoformat(timespec="seconds"),
-                "source": source,
-                "request": request,
-                "changes": [asdict(c) for c in applied],
-            })
-        return applied
+    walk(a.model_dump(), b.model_dump(), "")
+    return out
+
+
+def set_value(design: Tasarim, key: str, value: str) -> str:
+    """ayarla: 'degisken=deger', 'panel.alan=deger' veya tasarım alanı ('kalinlik=1.6')."""
+    d = design
+    if "." in key:
+        pid, field = key.split(".", 1)
+        for part in d.parcalar:
+            for p in part.paneller:
+                if p.id == pid:
+                    if field.startswith("profil_") and "." in field:
+                        pk, sub = field.split(".", 1)
+                        setattr(getattr(p, pk), sub, value)
+                    elif field.startswith("kose."):
+                        setattr(p.koseler, field[5:], value)
+                    elif field == "kat_sirasi":
+                        p.kat_sirasi = int(float(value))
+                    else:
+                        if not hasattr(p, field):
+                            raise KeyError(f"panel alanı yok: {field}")
+                        setattr(p, field, value)
+                    return f"{pid}.{field} = {value}"
+        raise KeyError(f"panel bulunamadı: {pid}")
+    for v in d.degiskenler:
+        if v.ad == key:
+            v.deger = value
+            return f"değişken {key} = {value}"
+    if key in ("kalinlik", "malzeme", "renk", "dikis_araligi", "kenar_payi", "ad"):
+        setattr(d, key, value)
+        return f"{key} = {value}"
+    raise KeyError(f"'{key}' bulunamadı (değişken, panel.alan veya tasarım alanı olmalı)")

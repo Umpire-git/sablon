@@ -9,11 +9,12 @@ ACI = {Kind.CUT: 7, Kind.SLIT: 1, Kind.HOLE: 6, Kind.FOLD: 5, Kind.STITCH: 1, Ki
 
 def _ascii(s: str) -> str:
     tr = str.maketrans("çğıİöşüÇĞÖŞÜ", "cgiIosuCGOSU")
-    return s.translate(tr)
+    return s.translate(tr).replace("°", " der").encode("ascii", "replace").decode("ascii")
 
 
-def write_dxf(tpl, path: str) -> None:
-    placed = tpl.build().layout()
+def write_dxf(title: str, pieces, path: str) -> None:
+    from ..pattern import Pattern
+    placed = Pattern(title, pieces).layout()
     out: list[str] = []
     a = out.append
 

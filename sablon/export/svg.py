@@ -1,11 +1,10 @@
-"""1:1 ölçekli SVG (mm birimli) — Cricut, lazer kesim, Inkscape için."""
+"""1:1 ölçekli SVG (mm birimli, katmanlı) — Cricut, lazer kesim, Inkscape için."""
 from __future__ import annotations
 
-import math
 from xml.sax.saxutils import escape
 
 from ..geometry import Arc, Circle, Line
-from ..pattern import Kind, Pattern
+from ..pattern import Kind, Pattern, Piece
 
 COLORS = {
     Kind.CUT: ("#000000", None), Kind.SLIT: ("#000000", None), Kind.HOLE: ("#000000", None),
@@ -14,8 +13,8 @@ COLORS = {
 }
 
 
-def write_svg(tpl, path: str) -> None:
-    placed = tpl.build().layout()
+def write_svg(title: str, pieces: list[Piece], path: str) -> None:
+    placed = Pattern(title, pieces).layout()
     x0, y0, x1, y1 = Pattern.extent(placed)
     m = 10.0
     W, H = x1 - x0 + 2 * m, y1 - y0 + 2 * m
@@ -39,7 +38,7 @@ def write_svg(tpl, path: str) -> None:
             anchor = {"start": "start", "end": "end"}.get(t.anchor, "middle")
             texts.append(
                 f'<text x="{fx(t.x):.2f}" y="{fy(t.y):.2f}" font-size="{t.size}" text-anchor="{anchor}" '
-                f'transform="rotate({-t.angle} {fx(t.x):.2f} {fy(t.y):.2f})">{escape(t.text)}</text>')
+                f'transform="rotate({-t.angle:.2f} {fx(t.x):.2f} {fy(t.y):.2f})">{escape(t.text)}</text>')
     body = []
     for kind, items in groups.items():
         if not items:
@@ -54,7 +53,7 @@ def write_svg(tpl, path: str) -> None:
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" '
         f'width="{W:.3f}mm" height="{H:.3f}mm" viewBox="0 0 {W:.3f} {H:.3f}">'
-        f'<title>{escape(tpl.title)}</title>' + "".join(body) + "</svg>"
+        f'<title>{escape(title)}</title>' + "".join(body) + "</svg>"
     )
     with open(path, "w", encoding="utf-8") as f:
         f.write(svg)

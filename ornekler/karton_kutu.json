@@ -1,0 +1,35 @@
+{
+  "ad": "Ters Kilitli Hediye Kutusu",
+  "konsept": "Klasik ters kilitli (reverse tuck end) karton kutu: kapaklar zıt panellerden açılır, toz kapakları içeri katlanır, yan yapıştırma payı ile birleşir.",
+  "kategori": "kutu",
+  "malzeme": "karton",
+  "kalinlik": "0.4",
+  "renk": "#e6d3b3",
+  "degiskenler": [
+    {"ad": "L", "deger": "80 + t", "aciklama": "ön/arka panel genişliği"},
+    {"ad": "D", "deger": "40 + t", "aciklama": "yan panel genişliği (derinlik)"},
+    {"ad": "H", "deger": "120 + 2*t", "aciklama": "yükseklik"},
+    {"ad": "dil", "deger": "15", "aciklama": "kapak dili"}
+  ],
+  "parcalar": [
+    {"id": "kutu", "ad": "Kutu", "adet": 1, "paneller": [
+      {"id": "on", "ad": "Ön", "genislik": "L", "yukseklik": "H"},
+      {"id": "yan1", "ad": "Yan", "ebeveyn": "on", "kenar": "sag", "genislik": "H", "yukseklik": "D", "aci": "90", "kat_sirasi": 1},
+      {"id": "arka", "ad": "Arka", "ebeveyn": "yan1", "kenar": "ust", "genislik": "H", "yukseklik": "L", "aci": "90", "kat_sirasi": 1},
+      {"id": "yan2", "ad": "Yan", "ebeveyn": "arka", "kenar": "ust", "genislik": "H", "yukseklik": "D", "aci": "90", "kat_sirasi": 1},
+      {"id": "yapistirma", "ad": "yapıştır", "ebeveyn": "on", "kenar": "sol", "genislik": "H", "yukseklik": "14", "aci": "90", "kat_sirasi": 1, "daralma": "4"},
+      {"id": "ust_kapak", "ad": "Üst kapak", "ebeveyn": "arka", "kenar": "sol", "genislik": "L", "yukseklik": "D", "aci": "90", "kat_sirasi": 3},
+      {"id": "ust_dil", "ad": "dil", "ebeveyn": "ust_kapak", "kenar": "ust", "genislik": "L - 3", "yukseklik": "dil", "aci": "90", "kat_sirasi": 3,
+       "koseler": {"sag_ust": "6", "sol_ust": "6"}},
+      {"id": "alt_kapak", "ad": "Alt kapak", "ebeveyn": "on", "kenar": "alt", "genislik": "L", "yukseklik": "D", "aci": "90", "kat_sirasi": 2},
+      {"id": "alt_dil", "ad": "dil", "ebeveyn": "alt_kapak", "kenar": "ust", "genislik": "L - 3", "yukseklik": "dil", "aci": "90", "kat_sirasi": 2,
+       "koseler": {"sag_ust": "6", "sol_ust": "6"}},
+      {"id": "toz1u", "ad": "toz", "ebeveyn": "yan1", "kenar": "sol", "genislik": "D - 1", "ofset": "0.5", "yukseklik": "25", "aci": "90", "kat_sirasi": 3, "daralma": "5"},
+      {"id": "toz1a", "ad": "toz", "ebeveyn": "yan1", "kenar": "sag", "genislik": "D - 1", "ofset": "0.5", "yukseklik": "25", "aci": "90", "kat_sirasi": 2, "daralma": "5"},
+      {"id": "toz2u", "ad": "toz", "ebeveyn": "yan2", "kenar": "sol", "genislik": "D - 1", "ofset": "-0.5", "yukseklik": "25", "aci": "90", "kat_sirasi": 3, "daralma": "5"},
+      {"id": "toz2a", "ad": "toz", "ebeveyn": "yan2", "kenar": "sag", "genislik": "D - 1", "ofset": "-0.5", "yukseklik": "25", "aci": "90", "kat_sirasi": 2, "daralma": "5"}
+    ]}
+  ],
+  "ozellikler": [],
+  "icerikler": []
+}
