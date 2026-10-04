@@ -235,6 +235,24 @@ def cmd_cikti(a):
             made += render_photos(doc.built, base, a.foto, doku=a.doku)
         except BlenderYok as e:
             print(f"  ⚠ {e}")
+    if a.gemini:
+        from .gemini import GeminiYok, realistic_set
+        refs = {}
+        fotos = [m for m in made if "_foto_" in m]
+        if fotos:
+            from PIL import Image
+            for m in fotos:
+                refs[m.rsplit("_foto_", 1)[1][:-4]] = Image.open(m).convert("RGB")
+        else:
+            from .render3d import render
+            b = doc.built
+            refs = {"urun": render(b, fold=1.0, az=-35, el=32, size=(1400, 1000)),
+                    "arka": render(b, fold=1.0, az=-35, el=32, size=(1400, 1000), flip=True)}
+        print("Gemini ile fotoğraf gerçekliğinde görseller hazırlanıyor (şekli kalıpla karşılaştırıp kontrol edin)...")
+        try:
+            made += realistic_set(refs, design, base, scenes=a.gemini.split(","))
+        except GeminiYok as e:
+            print(f"  ⚠ {e}")
     print("Oluşturulan dosyalar:")
     for m in made:
         print(f"  {m}")
@@ -291,6 +309,8 @@ def main(argv: list[str] | None = None):
     s.add_argument("--bicim", default="a4,letter,full,svg,dxf,3b,gorsel")
     s.add_argument("--hizli", action="store_true", help="Düşük çözünürlüklü görseller (hızlı)")
     s.add_argument("--foto", choices=["hizli", "kaliteli"], help="Blender ile fotogerçekçi ürün görselleri")
+    s.add_argument("--gemini", nargs="?", const="studyo", metavar="SAHNE",
+                   help="Gemini ile fotoğraf gerçekliğinde görsel; sahne: studyo,ahsap,keten,mermer (virgülle birden çok)")
     s.add_argument("--doku", help="Gerçek deri dokusu klasörü (ambientCG / Poly Haven PBR: Color, Roughness, Normal)")
     s.add_argument("--zorla", action="store_true")
     s.set_defaults(f=cmd_cikti)

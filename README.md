@@ -47,6 +47,20 @@ pencereyi kapatıp yeniden açın.
 
 Mac/Linux: `pip install -e ".[dev]"`, Blender'ı kurun (veya Python 3.11'de `pip install bpy`).
 
+### Gerçek fotoğraf gibi görseller: Gemini (önerilen)
+
+Bilgisayarda hesaplanan 3B görsel ölçüsü doğru ama "çizim" gibi durur. Gerçek deri fotoğrafı görünümü için
+motorun görseli Gemini'ye **referans** olarak verilir; Gemini aynı şekli koruyarak ürün fotoğrafı üretir.
+
+1. Ücretsiz anahtar alın: <https://aistudio.google.com/apikey>
+2. Komut penceresinde: `setx GEMINI_API_KEY "anahtarınız"` → pencereyi kapatıp yeniden açın.
+3. `sablon cikti proje.json --foto hizli --gemini studyo,ahsap` (sahneler: `studyo`, `ahsap`, `keten`, `mermer`).
+   `deneme.bat` anahtar tanımlıysa bunu kendisi yapar.
+
+Gemini'ye dikiş, logo, ek cep eklememesi ve şekli birebir koruması söylenir; yine de yapay zekâ ayrıntı
+değiştirebilir — **her görseli kalıpla karşılaştırın** (kapak ucu, kilit dilleri, çıtçıt yeri). Ana Etsy
+görseli için en güvenilir kaynak yine prototipin gerçek fotoğrafıdır.
+
 ### Fotogerçekçi görseller ve bilgisayar gücü
 
 `sablon cikti proje.json --foto hizli` veya `--foto kaliteli`:

@@ -376,3 +376,48 @@ def test_texture_maps_found(tmp_path):
         (tmp_path / n).write_bytes(b"x")
     m = _find_maps(str(tmp_path))
     assert m["color"].endswith("Color.jpg") and m["rough"].endswith("Roughness.jpg") and m["normal"].endswith("NormalGL.jpg")
+
+
+# --- Gemini ile gerçekçi görsel (sahte istemci) -----------------------------------------------
+def test_gemini_keeps_geometry_rules_and_returns_image(tmp_path):
+    import io as _io
+    from PIL import Image
+    from sablon import gemini
+
+    d = design("kapakli_citcitli_kartlik")
+    pr = gemini.prompt(d, "ahsap")
+    assert "STITCHLESS" in pr and "EXACT shape" in pr and "crazy horse" in pr and "oak" in pr
+
+    out = Image.new("RGB", (64, 48), (120, 70, 40))
+    buf = _io.BytesIO(); out.save(buf, "PNG")
+
+    class Part:
+        def __init__(self):
+            self.inline_data = type("D", (), {"data": buf.getvalue()})()
+            self.text = None
+
+    class Resp:
+        candidates = [type("C", (), {"content": type("X", (), {"parts": [Part()]})()})()]
+
+    class Models:
+        def __init__(self):
+            self.calls = []
+
+        def generate_content(self, **kw):
+            self.calls.append(kw)
+            return Resp()
+
+    client = type("Cl", (), {"models": Models()})()
+    ref = Image.new("RGB", (64, 48))
+    paths = gemini.realistic_set({"urun": ref}, d, str(tmp_path / "k"), scenes=("studyo", "ahsap"), client=client, log=lambda *_: None)
+    assert len(paths) == 2 and all(os.path.exists(p) for p in paths)
+    kw = client.models.calls[0]
+    assert kw["contents"][1] is ref and kw["model"] == gemini.MODEL
+
+
+def test_gemini_without_key_is_clear(monkeypatch):
+    from sablon import gemini
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    with pytest.raises(gemini.GeminiYok):
+        gemini._client()

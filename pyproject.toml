@@ -8,7 +8,7 @@ version = "0.3.0"
 description = "Dikişsiz deri ürünler için yaratıcı, katlama-farkındalıklı, mm hassasiyetli kalıp tasarım aracı — PDF kitapçık, SVG, DXF, 3B"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["reportlab>=4.0", "anthropic>=1.0", "pydantic>=2.0", "numpy>=1.24", "pillow>=10.0"]
+dependencies = ["reportlab>=4.0", "anthropic>=1.0", "pydantic>=2.0", "numpy>=1.24", "pillow>=10.0", "google-genai>=1.0"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pypdf"]
