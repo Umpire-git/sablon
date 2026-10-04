@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from .checks import pull_strip_data
+from .checks import pull_fold, pull_strip_data
 from .engine import Built
 
 
@@ -44,7 +44,8 @@ def scene_json(b: Built) -> dict:
     return {"title": b.design.ad, "color": b.design.renk or "#9a5a2e", "crazy": b.design.malzeme == "crazy_horse",
             "nodes": nodes, "hw": hw, "contents": contents,
             "steps": sorted({n["order"] for n in nodes if n["order"]}),
-            "pulls": [{k: d[k] for k in ("child", "base", "content", "lift")} for d in pull_strip_data(b)]}
+            "open_on_pull": sorted(k for k, v in pull_fold(b).items() if v == 0.0),
+            "pulls": [{k: d[k] for k in ("child", "base", "content", "lift", "pass", "arm_len")} for d in pull_strip_data(b)]}
 
 
 HTML = r"""<!doctype html>
@@ -144,9 +145,9 @@ for (const s of S.hw){ const m = new THREE.Mesh(dome(s.r, s.h), metal); m.castSh
   m.position.set(s.xy[0], s.xy[1], s.side>0 ? 0 : -t); if (s.side<0) m.scale.z = -1; groups[s.panel].add(m); }
 const contentMeshes = [];
 const fillers = {};
-for (const pl of S.pulls){ const n = byId[pl.child]; const w = n.hx[1]-n.hx[0];
+for (const pl of S.pulls) for (const id of (pl.pass.length ? pl.pass : [pl.child])){ const n = byId[id]; const w = n.hx[1]-n.hx[0];
   const g = new THREE.BoxGeometry(w, 1, n.t); g.translate((n.hx[0]+n.hx[1])/2, 0.5, -n.t/2);
-  const m = new THREE.Mesh(g, leather); m.castShadow = m.receiveShadow = true; m.visible = false; groups[pl.child].add(m); fillers[pl.child] = m; }
+  const m = new THREE.Mesh(g, leather); m.castShadow = m.receiveShadow = true; m.visible = false; groups[id].add(m); fillers[id] = m; }
 for (const c of S.contents){
   const t = byId[c.panel].t; const z0 = c.under ? -t - c.s : c.z0 + 0.05, z1 = c.under ? -t : c.z0 + c.s;
   const r=3.18, x=c.x, y=c.y, w=c.w, h=c.h; const sh=new THREE.Shape();
@@ -156,7 +157,7 @@ for (const c of S.contents){
   const m = new THREE.Mesh(g,[cardTop, cardSide]); m.castShadow = true; groups[c.panel].add(m); contentMeshes.push(m);
 }
 const M4 = THREE.Matrix4, T = (x,y,z)=>new M4().makeTranslation(x,y,z);
-function compute(fold){
+function compute(fold, pullv){
   const mats = {}, hinge = {};
   const get = (id)=>{
     if (mats[id]) return mats[id];
@@ -171,14 +172,18 @@ function compute(fold){
     }
     return mats[id] = m;
   };
-  const p = +document.getElementById('pull').value, shift = {}, bshift = {};
-  contentMeshes.forEach(m=>m.position.y=0);
+  const p = pullv ?? +document.getElementById('pull').value, moves = {}, bshift = {};
+  contentMeshes.forEach(m=>m.position.y=0); Object.values(fillers).forEach(m=>m.visible=false);
+  const fill = (id, L)=>{ const fm = fillers[id]; fm.visible = L > 0.01; fm.position.y = -L; fm.scale.y = Math.max(L, 1e-3); };
   for (const pl of S.pulls){ const dl = pl.lift*p, v = new THREE.Vector3(0,1,0).transformDirection(get(pl.base));
-    shift[pl.child] = v.clone().multiplyScalar(2*dl); bshift[pl.child] = v.clone().multiplyScalar(dl);
-    if (contentMeshes[pl.content]) contentMeshes[pl.content].position.y = dl;
-    const fm = fillers[pl.child]; fm.visible = dl > 0.01; fm.position.y = -dl; fm.scale.y = Math.max(dl, 1e-3); }
+    const Tv = (k)=>T(v.x*k, v.y*k, v.z*k);
+    if (pl.pass.length){ moves[pl.child] = [Tv(dl), new M4().makeScale(1, Math.max(1e-3, (pl.arm_len-dl)/pl.arm_len), 1)];
+      for (const id of pl.pass){ moves[id] = [Tv(2*dl), new M4()]; fill(id, 2*dl); } }
+    else { moves[pl.child] = [Tv(2*dl), new M4()]; fill(pl.child, dl); }
+    bshift[pl.child] = v.clone().multiplyScalar(dl);
+    if (contentMeshes[pl.content]) contentMeshes[pl.content].position.y = dl; }
   for (const n of S.nodes){ const g = groups[n.id]; g.matrix.copy(get(n.id));
-    if (shift[n.id]) g.matrix.premultiply(T(shift[n.id].x, shift[n.id].y, shift[n.id].z)); g.matrixWorldNeedsUpdate = true; }
+    if (moves[n.id]){ g.matrix.premultiply(moves[n.id][0]); g.matrix.multiply(moves[n.id][1]); } g.matrixWorldNeedsUpdate = true; }
   for (const id in bends){
     const n = byId[id], {mesh, segs} = bends[id], h = hinge[id]; const pos = mesh.geometry.attributes.position;
     for (let k=0;k<=segs;k++){ const a = h.a*k/segs, s=Math.sin(a), c=Math.cos(a);
@@ -191,7 +196,11 @@ function compute(fold){
 const slider = document.getElementById('f'); let stepMode = null;
 function foldFn(){ const v = +slider.value; if (stepMode === null) return ()=>v;
   return (n)=> n.order && n.order < stepMode ? 1 : (n.order === stepMode ? v : 0); }
-function update(){ compute(foldFn()); }
+const openSet = new Set(S.open_on_pull);
+function update(){ const f = foldFn(), pv = +document.getElementById('pull').value;
+  // şerit çekilirken kartların üstünü örten kapak önce açılır, kartlar sonra yükselir
+  const k = Math.max(0, 1 - pv*4);
+  compute(openSet.size ? (n)=> openSet.has(n.id) ? f(n)*k : f(n) : f, Math.max(0, (pv - (openSet.size ? 0.25 : 0)) / (openSet.size ? 0.75 : 1))); }
 slider.oninput = update;
 const stepsEl = document.getElementById('steps'); const btns=[];
 const allBtn = document.createElement('button'); allBtn.textContent='Tümü'; allBtn.className='on'; stepsEl.append(allBtn); btns.push(allBtn);

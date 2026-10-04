@@ -173,7 +173,9 @@ def make(b: Built) -> Instructions:
     for lv in fold_levels:
         group = [p for p in b.panels.values() if p.parent and p.spec.kat_sirasi == lv]
         folding = [p for p in group if abs(p.angle) > 1]
-        heads = [p for p in group if p.spec.yariktan_gecer]
+        passing = {lk["neck"] for lk in b.locks if lk.get("gecis")}
+        slides = [p for p in group if p.spec.yariktan_gecer and p.parent in passing]
+        heads = [p for p in group if p.spec.yariktan_gecer and p.parent not in passing]
         txt = []
         if folding:
             names = ", ".join(sorted({_name(b, p.id) for p in folding}))
@@ -181,10 +183,13 @@ def make(b: Built) -> Instructions:
             txt.append(f"Katlanan paneller: {names} ({kinds} kat, {', '.join(sorted({f'{abs(p.angle):.0f}°' for p in folding}))}).")
         if any(p.id in lock_necks for p in folding):
             txt.append("Dil boyunlarını gövdenin altından geçirerek yarıkların hizasına getirin.")
+        if slides:
+            txt.append("Şeridin ucunu içeriden şerit yuvasına sokup dışarı çekin; uç yuvada serbestçe kaymalı. Sıkıysa "
+                       "yuvanın iki ucunu 1 mm uzatın, kenarlarını kenar boyasıyla mühürleyin.")
         if heads:
             txt.append("Kilit kafasını uzunlamasına hafifçe bükün, yarıktan içeri itin ve düzeltin: kafa yarıktan "
                        "geniş olduğu için içeride kilitlenir. Zorlanırsa yarığın kenarlarını değil, kafayı bükün.")
-        title = "Kilitleme" if heads and not folding else f"Katlama {fold_step_numbers(b.panels.values()).get(lv, lv)}"
+        title = "Kilitleme" if (heads or slides) and not folding else f"Katlama {fold_step_numbers(b.panels.values()).get(lv, lv)}"
         steps.append(Step(title, txt, {"fold": {pid: (1.0 if p.parent and 0 < p.spec.kat_sirasi <= lv else 0.0)
                                                 for pid, p in b.panels.items()},
                                        "caption": f"{title} sonrası"}))
@@ -200,14 +205,14 @@ def make(b: Built) -> Instructions:
         shape.append("Saç kurutma makinesiyle ılıtıp elle bastırarak şekillendirin; soğurken şeklini alır.")
     steps.append(Step("Şekillendirme", shape))
     steps.append(Step("Son işlem", [mat.son_islem], {"fold": 1.0, "caption": "Bitmiş ürün"}))
-    from .checks import pull_strip_data
+    from .checks import pull_fold, pull_strip_data
     for d in pull_strip_data(b):
         steps.append(Step("Kullanım: çekme şeridi", [
             f"Gövdenin altından taşan şerit ucunu tutup aşağı doğru çekin: şerit U kıvrımından makara gibi döner, "
             f"kartlar yaklaşık {d['lift']:.0f} mm yükselir ve üstten {d['visible']:.0f} mm görünür.",
             "Kartları elle geri ittiğinizde şerit de eski yerine döner.",
             "Şerit ucunu birkaç kez çekip bırakarak deriyi alıştırın; ilk günlerde biraz sert gelmesi normaldir.",
-        ], {"fold": 1.0, "pull": 1.0, "caption": "Şerit çekilmiş: kartlar yükseldi"}))
+        ], {"fold": pull_fold(b), "pull": 1.0, "caption": "Şerit çekilmiş: kartlar yükseldi"}))
 
     n_feat = len(b.locks) + len(snaps) + len(b.fasteners)
     score = 1 + (len(fold_levels) > 2) + (len(b.locks) > 0) + (n_feat > 3) + (len(b.parts) > 1)

@@ -801,6 +801,14 @@ def _features(b: Built, num):
             continue
         F.append(Finding("uyari", "ozellik_tip", f"{where}: desteklenmeyen özellik."))
 
+    # geçiş yuvası: monte bir şeridin ucu, kendinden geniş olmayan bir yarıktan geçip kayar (kilit değil)
+    for lk in b.locks:
+        neck = b.panels[lk["neck"]]
+        rp = b.panels[b.roots[neck.part]]
+        heads = [q for q in b.panels.values() if q.parent == neck.id and q.spec.yariktan_gecer]
+        lk["gecis"] = bool(heads and rp.mount is not None and rp.mount.ana_panel
+                           and all(h.w <= lk["length"] for h in heads))
+
     # kilit kafaları: yarıktan geçip hedefin öbür yüzüne
     for p in b.panels.values():
         if not p.spec.yariktan_gecer:

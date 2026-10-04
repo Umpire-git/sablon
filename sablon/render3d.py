@@ -310,28 +310,43 @@ def _hinge_test(b: Built, p):
 
 
 def pull_offsets(b: Built, mats: dict, pull: float):
-    """Çekme şeridi çekildiğinde: şerit kolu 2Δ, U kıvrımı ve kartlar Δ yükselir (Δ = yükselme × pull)."""
+    """Çekme şeridi çekildiğinde şerit parçalarının yeni konumu (Δ = yükselme × pull).
+
+    U kıvrımı ve kartlar Δ yükselir. Kol düz bitiyorsa kol 2Δ kayar (U ile kol arası dolgu Δ).
+    Kol bir yuvadan dışarı çıkıyorsa: içerideki kol Δ kayıp kısalır, dıştaki uç 2Δ kayar (yuva ile uç arası dolgu 2Δ).
+    Dönüş: {panel: 4x4 düzeltme (dünyada soldan çarpılır, yerelde sağdan)}, {panel: kıvrım ötelemesi},
+    {içerik: Δ}, [(panel, dolgu boyu)]
+    """
     if pull <= 0:
-        return {}, {}, {}
+        return {}, {}, {}, []
     from .checks import pull_strip_data
-    child_shift, bend_shift, content_shift = {}, {}, {}
+    moves, bend_shift, content_shift, fillers = {}, {}, {}, []
     for d in pull_strip_data(b):
         delta = d["lift"] * pull
         v = mats[d["base"]][:3, :3] @ np.array([0.0, 1.0, 0.0])
-        child_shift[d["child"]] = (v * 2 * delta, delta)
+        T = lambda k: np.block([[np.eye(3), (v * k)[:, None]], [np.zeros((1, 3)), np.ones((1, 1))]])
+        if d["pass"]:
+            sc = np.diag([1.0, max(1e-3, (d["arm_len"] - delta) / d["arm_len"]), 1.0, 1.0])
+            moves[d["child"]] = (T(delta), sc)
+            for q in d["pass"]:
+                moves[q] = (T(2 * delta), np.eye(4))
+                fillers.append((q, 2 * delta))
+        else:
+            moves[d["child"]] = (T(2 * delta), np.eye(4))
+            fillers.append((d["child"], delta))
         bend_shift[d["child"]] = v * delta
         content_shift[d["content"]] = delta
-    return child_shift, bend_shift, content_shift
+    return moves, bend_shift, content_shift, fillers
 
 
 def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=True, pull: float = 0.0) -> Mesh:
     mesh = Mesh()
     base = _hex(b.design.renk or "")
     mats = b.matrices(fold)
-    child_shift, bend_shift, content_shift = pull_offsets(b, mats, pull)
-    for pid, (vec, _) in child_shift.items():
-        mats[pid] = mats[pid].copy()
-        mats[pid][:3, 3] += vec
+    moves, bend_shift, content_shift, fillers = pull_offsets(b, mats, pull)
+    for pid, (W, L) in moves.items():
+        mats[pid] = W @ mats[pid] @ L
+    fill = dict(fillers)
     edge_col = tuple(v * 0.55 for v in base)
     softs = {}
     for i, pid in enumerate(b.order):
@@ -349,8 +364,8 @@ def build_mesh(b: Built, fold=1.0, show_contents=True, show_hardware=True, soft=
               flat_edges=_hinge_test(b, p) if soft else None, maxlen=5.0 if soft else 1e9)
         if p.parent:
             _bend(mesh, b, pid, fold, base, mats, shift=bend_shift.get(pid))
-        if pid in child_shift:  # U ile yükselen kol arasında kalan şerit
-            dl = child_shift[pid][1]
+        if pid in fill:  # çekilince açılan şerit boşluğu (U–kol ya da yuva–uç arası)
+            dl = fill[pid]
             x0, x1 = p.hinge_x
             _slab(mesh, [(x0, -dl), (x1, -dl), (x1, 0.0), (x0, 0.0)], mats[pid], -p.t, 0.0, base, LEATHER, EDGE, edge_col)
         for mk in p.marks:

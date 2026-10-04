@@ -54,4 +54,4 @@ def render_images(doc: Document, quick: bool = False):
         fold = st.image["fold"]
         pull = st.image.get("pull", 0.0)
         doc.images[f"step{i}"] = render(b, fold=fold, az=160 if pull else -30, el=32 if pull else 38, size=small,
-                                        ss=ss, show_contents=(fold == 1.0), pull=pull)
+                                        ss=ss, show_contents=(fold == 1.0 or bool(pull)), pull=pull)

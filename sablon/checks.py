@@ -233,12 +233,22 @@ def run_checks(b: Built, steps: bool = True) -> list:
             out.append(Finding("uyari", "ince_panel", f"'{p.id}' paneli ({p.w:.1f}×{p.h:.1f}) bu kalınlıkta katlanamayacak kadar dar.", p.id))
 
     # --- dil-yarık kilitleri
-    if b.locks and not mat.sert:
+    if any(not lk.get("gecis") for lk in b.locks) and not mat.sert:
         out.append(Finding("uyari", "kilit_yumusak",
                            f"{mat.ad} yumuşak; dil-yarık kilidi zamanla gevşer. Kilit dillerini 1.6 mm ve üzeri tutun, "
                            "kafayı yarıktan en az 3 mm geniş yapın."))
     for lk in b.locks:
         neck = b.panels[lk["neck"]]
+        if lk.get("gecis"):  # şerit geçiş yuvası: kafa kontrolü yok, yalnız yarık-kenar mesafesi
+            tgt = b.panels[lk["target"]]
+            for mk in tgt.marks:
+                if mk.kind.value == "slit":
+                    for q in ((mk.prim.x0, mk.prim.y0), (mk.prim.x1, mk.prim.y1)):
+                        if dist_to_polygon_edge(q, tgt.poly) < max(5.0, 3 * tgt.t):
+                            out.append(Finding("hata", "yarik_kenar", f"'{tgt.id}' üzerindeki şerit yuvası kenara çok yakın; "
+                                                                      "aradaki köprü yırtılır.", tgt.id))
+                            break
+            continue
         need = max(8.0, 5 * neck.t)
         if neck.w < need:
             out.append(Finding("hata", "dar_dil", f"'{neck.id}' dil boynu {neck.w:.1f} mm; en az {need:.0f} mm olmalı, yoksa kopar.", neck.id))
@@ -325,7 +335,7 @@ def run_checks(b: Built, steps: bool = True) -> list:
             continue
         pids = {q.id for q in b.panels.values() if q.part == part_id}
         joins = sum(1 for f in b.fasteners if set(f["layers"]) & pids and len(f["layers"]) > 1)
-        joins += sum(1 for lk in b.locks if lk["neck"] in pids or lk["target"] in pids)
+        joins += sum(1 for lk in b.locks if (lk["neck"] in pids or lk["target"] in pids) and not lk.get("gecis"))
         joins += sum(1 for s in b.snaps if s.src in pids or s.dst in pids)
         if joins == 0:
             out.append(Finding("hata", "bagsiz", f"'{part_id}' parçası ana panele hiçbir perçin/vida/kilit/çıtçıtla bağlı değil."))
@@ -333,6 +343,7 @@ def run_checks(b: Built, steps: bool = True) -> list:
             out.append(Finding("uyari", "tek_baglanti", f"'{part_id}' tek noktadan bağlı; döner. En az iki bağlantı kullanın."))
 
     # --- içerik: sığıyor mu, tutuluyor mu, çıkıyor mu?
+    pulled_ids = {d["content"] for d in pull_strip_data(b)}
     for cg in b.contents:
         p = b.panels[cg.panel]
         label = f"{cg.spec.adet} {dict(kart='kart', banknot='banknot', anahtar='anahtar').get(cg.spec.tip, 'içerik')}"
@@ -353,7 +364,8 @@ def run_checks(b: Built, steps: bool = True) -> list:
         if cover_top < cg.y + cg.h * 0.45:
             out.append(Finding("uyari", "tutmuyor", f"{label}: içeriğin yalnızca alt %{100 * (cover_top - cg.y) / cg.h:.0f}'i örtülü; kolay düşer.", p.id))
         notch = any(b.panels[c[0]].spec.profil_ust.tip == "oyuk" for c in covers)
-        if cover_top >= top - 3 and not notch and p.h >= top - 3:
+        pulled = b.contents.index(cg) in pulled_ids
+        if cover_top >= top - 3 and not notch and p.h >= top - 3 and not pulled:
             out.append(Finding("uyari", "erisim", f"{label}: içerik tamamen örtülü; tutup çekecek yer yok. "
                                                   "Ön paneli alçaltın veya başparmak oyuğu ekleyin.", p.id))
 
@@ -401,6 +413,27 @@ def _covers(b: Built, cg) -> list[tuple[str, float]]:
     return res
 
 
+def _descendants(b: Built, pid: str) -> list[str]:
+    out, todo = [], [pid]
+    while todo:
+        k = todo.pop()
+        kids = [q.id for q in b.panels.values() if q.parent == k]
+        out += kids
+        todo += kids
+    return out
+
+
+def pull_fold(b: Built) -> dict:
+    """Şerit çekilmiş görünüm için katlar: kartların üstünü kapatan kapaklar (taban panelin üst kenarından çıkanlar) açık."""
+    fold = {pid: 1.0 for pid in b.panels}
+    for d in pull_strip_data(b):
+        for q in b.panels.values():
+            if q.parent == d["base"] and q.spec.kenar == "ust":
+                for k in [q.id] + _descendants(b, q.id):
+                    fold[k] = 0.0
+    return fold
+
+
 def pull_strip_data(b: Built) -> list[dict]:
     """Çekme şeritleri: monte bir şerit kartların altından U çizip tabana yatıyorsa.
 
@@ -425,7 +458,7 @@ def pull_strip_data(b: Built) -> list[dict]:
             for c in b.panels.values():
                 if c.parent != root or abs(c.angle) < 150:
                     continue
-                ys = [to_base(c.id, x, y)[1] for x, y in c.quad]
+                ys = [to_base(q, x, y)[1] for q in [c.id] + _descendants(b, c.id) for x, y in b.panels[q].quad]
                 zs = [to_base(c.id, x, y)[2] for x, y in c.quad]
                 if max(abs(z) for z in zs) > 3 * c.t + 1:
                     continue  # tabana yatmıyor: çekme şeridi değil
@@ -433,6 +466,9 @@ def pull_strip_data(b: Built) -> list[dict]:
                 anchor = max(anchors) if anchors else max(to_base(root, x, y)[1] for x, y in rp.quad)
                 lift = max(0.0, anchor - 6 - cg.y)
                 res.append({"part": part_id, "name": b.parts[part_id].ad or part_id, "child": c.id, "base": base.id,
+                            "pass": [q.id for q in b.panels.values() if q.parent == c.id and q.spec.yariktan_gecer
+                                     and any(lk["neck"] == c.id and lk.get("gecis") for lk in b.locks)],
+                            "arm_len": float(c.h),
                             "content": ci, "lift": float(lift), "visible": float(cg.y + cg.h + lift - base_top),
                             "tab": float(max(ys) - base_top)})
     return res

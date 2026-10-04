@@ -617,3 +617,17 @@ def test_pull_strip_animation():
     top = lambda m: max(float(np.asarray(p)[:, 1].max()) for p in m.P)
     assert top(m1) > top(m0) + 10
     assert any("çekme şeridi" in s.title for s in make(b).steps)
+
+
+def test_pull_strip_through_slot():
+    from sablon.checks import pull_fold, pull_strip_data
+    from sablon.render3d import build_mesh
+    b = build(from_dict(json.load(open("ornekler/tek_merkez_kilitli_cek_cikar.json", encoding="utf-8"))))
+    errs = [f for f in run_checks(b) if f.level == "hata"]
+    assert not errs, errs
+    d = pull_strip_data(b)[0]
+    assert d["pass"] == ["serit_uc"] and d["tab"] >= 12 and d["visible"] >= 15
+    assert all(lk["gecis"] for lk in b.locks if lk["neck"] == "serit_arka")
+    f = pull_fold(b)
+    assert f["kapak"] == 0.0 and f["on"] == 1.0
+    assert len(build_mesh(b, f, soft=False, pull=1.0).P) > 0

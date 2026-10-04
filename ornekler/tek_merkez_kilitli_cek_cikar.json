@@ -1,0 +1,738 @@
+{
+  "ad": "Tek Merkez Kilitli Çek-Çıkar",
+  "konsept": "Üstten gelen zarf kapak, ön yüzün ortasındaki tek yarığa kilitlenir. Çekme şeridi kartların altından U çizip arka panelin yarığından dışarı çıkar: kapak kapalıyken bile tutma ucu arka yüzde görünür. Kapağı açıp ucu yukarı çekince kartlar yükselir. Dikişsiz; yalnız şerit iki perçinle tutturulur.",
+  "kategori": "kartlik",
+  "malzeme": "crazy_horse",
+  "kalinlik": "1.6",
+  "renk": "#6b4024",
+  "degiskenler": [
+    {
+      "ad": "kart_adet",
+      "deger": "4",
+      "aciklama": "kapasite"
+    },
+    {
+      "ad": "bosluk",
+      "deger": "1.5",
+      "aciklama": "yan pay"
+    },
+    {
+      "ad": "ts",
+      "deger": "1.0",
+      "aciklama": "şerit kalınlığı"
+    },
+    {
+      "ad": "S",
+      "deger": "kart_adet*kart_k + 0.6",
+      "aciklama": "yığın kalınlığı"
+    },
+    {
+      "ad": "g",
+      "deger": "S + t + 2*ts",
+      "aciklama": "körük: kartlar + merkez kilit kafası + şeridin iki kolu"
+    },
+    {
+      "ad": "W",
+      "deger": "kart_g + 2*bosluk",
+      "aciklama": "panel genişliği"
+    },
+    {
+      "ad": "Hb",
+      "deger": "kart_y + 3",
+      "aciklama": "arka boy: kartlar tamamen içeride, kapak üstten kapanır"
+    },
+    {
+      "ad": "Hf",
+      "deger": "kart_y - 4",
+      "aciklama": "ön boy"
+    },
+    {
+      "ad": "sw",
+      "deger": "16",
+      "aciklama": "şerit genişliği"
+    },
+    {
+      "ad": "ru",
+      "deger": "(g + 2*kr - 2*ts)/2",
+      "aciklama": "şeridin kartları alttan saracağı U kıvrım yarıçapı"
+    },
+    {
+      "ad": "kdil",
+      "deger": "16",
+      "aciklama": "merkez kapak kilit boynu genişliği"
+    },
+    {
+      "ad": "boyun",
+      "deger": "14",
+      "aciklama": "yan kilit boynu genişliği"
+    },
+    {
+      "ad": "my",
+      "deger": "ru + ts + 1.5",
+      "aciklama": "şeridin ön paneldeki montaj yüksekliği"
+    },
+    {
+      "ad": "kok",
+      "deger": "26",
+      "aciklama": "şerit kökü (perçinli kısım) boyu"
+    },
+    {
+      "ad": "ky",
+      "deger": "my + kok + 11",
+      "aciklama": "merkez kilit yarığının ön paneldeki yüksekliği (kafa kökün üstünde kalır)"
+    },
+    {
+      "ad": "sy",
+      "deger": "Hb - 8",
+      "aciklama": "şeridin arka panelden dışarı çıktığı yarığın yüksekliği"
+    },
+    {
+      "ad": "uc",
+      "deger": "26",
+      "aciklama": "arka yüzde dışarıda kalan tutma ucu boyu"
+    }
+  ],
+  "parcalar": [
+    {
+      "id": "govde",
+      "ad": "Gövde",
+      "adet": 1,
+      "malzeme": "",
+      "kalinlik": "",
+      "montaj": {
+        "ana_panel": "",
+        "x": "0",
+        "y": "0",
+        "yuz": "ic"
+      },
+      "paneller": [
+        {
+          "id": "arka",
+          "ad": "Arka",
+          "ebeveyn": "",
+          "kenar": "",
+          "ofset": "0",
+          "genislik": "W",
+          "yukseklik": "Hb",
+          "aci": "0",
+          "kat_sirasi": 0,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "alt_koruk",
+          "ad": "Alt körük",
+          "ebeveyn": "arka",
+          "kenar": "alt",
+          "ofset": "0",
+          "genislik": "W",
+          "yukseklik": "g",
+          "aci": "90",
+          "kat_sirasi": 1,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "on",
+          "ad": "Ön",
+          "ebeveyn": "alt_koruk",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "W",
+          "yukseklik": "Hf",
+          "aci": "90",
+          "kat_sirasi": 1,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "yan_sol",
+          "ad": "Yan",
+          "ebeveyn": "on",
+          "kenar": "sol",
+          "ofset": "0",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "aci": "90",
+          "kat_sirasi": 2,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "yan_sag",
+          "ad": "Yan",
+          "ebeveyn": "on",
+          "kenar": "sag",
+          "ofset": "0",
+          "genislik": "Hf",
+          "yukseklik": "g + t",
+          "aci": "90",
+          "kat_sirasi": 2,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "boyun_sol",
+          "ad": "dil",
+          "ebeveyn": "yan_sol",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "boyun",
+          "yukseklik": "14",
+          "aci": "90",
+          "kat_sirasi": 2,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "boyun_sag",
+          "ad": "dil",
+          "ebeveyn": "yan_sag",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "boyun",
+          "yukseklik": "14",
+          "aci": "90",
+          "kat_sirasi": 2,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "kafa_sol",
+          "ad": "kilit",
+          "ebeveyn": "boyun_sol",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "boyun + t + 4",
+          "yukseklik": "9",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": true,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "3",
+            "sol_ust": "3"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "kafa_sag",
+          "ad": "kilit",
+          "ebeveyn": "boyun_sag",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "boyun + t + 4",
+          "yukseklik": "9",
+          "aci": "0",
+          "kat_sirasi": 3,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": true,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "3",
+            "sol_ust": "3"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "sirt",
+          "ad": "Sırt",
+          "ebeveyn": "arka",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "W",
+          "yukseklik": "g + t",
+          "aci": "90",
+          "kat_sirasi": 4,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "kapak",
+          "ad": "Kapak",
+          "ebeveyn": "sirt",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "W",
+          "yukseklik": "Hb - ky - 10 + 2",
+          "aci": "90",
+          "kat_sirasi": 4,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "12",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "merkez_boyun",
+          "ad": "Merkez Dil",
+          "ebeveyn": "kapak",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "kdil",
+          "yukseklik": "10",
+          "aci": "0",
+          "kat_sirasi": 4,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "merkez_kafa",
+          "ad": "Kilit",
+          "ebeveyn": "merkez_boyun",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "kdil + t + 4",
+          "yukseklik": "9",
+          "aci": "0",
+          "kat_sirasi": 5,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": true,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "3",
+            "sol_ust": "3"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "serit",
+      "ad": "Çekme şeridi",
+      "adet": 1,
+      "malzeme": "",
+      "kalinlik": "ts",
+      "montaj": {
+        "ana_panel": "on",
+        "x": "(W - sw)/2",
+        "y": "ru + ts + 1.5",
+        "yuz": "ic"
+      },
+      "paneller": [
+        {
+          "id": "serit_on",
+          "ad": "şerit gövde",
+          "ebeveyn": "",
+          "kenar": "",
+          "ofset": "0",
+          "genislik": "sw",
+          "yukseklik": "kok",
+          "aci": "0",
+          "kat_sirasi": 0,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "3",
+            "sol_ust": "3"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "serit_arka",
+          "ad": "şerit ucu",
+          "ebeveyn": "serit_on",
+          "kenar": "alt",
+          "ofset": "0",
+          "genislik": "sw",
+          "yukseklik": "sy - my",
+          "aci": "180",
+          "kat_sirasi": 2,
+          "kivrim_yaricapi": "ru",
+          "yariktan_gecer": false,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        },
+        {
+          "id": "serit_uc",
+          "ad": "tutma ucu",
+          "ebeveyn": "serit_arka",
+          "kenar": "ust",
+          "ofset": "0",
+          "genislik": "sw",
+          "yukseklik": "uc",
+          "aci": "0",
+          "kat_sirasi": 2,
+          "kivrim_yaricapi": "",
+          "yariktan_gecer": true,
+          "koseler": {
+            "sol_alt": "0",
+            "sag_alt": "0",
+            "sag_ust": "0",
+            "sol_ust": "0"
+          },
+          "daralma": "0",
+          "profil_ust": {
+            "tip": "yuvarlak",
+            "olcu": "0"
+          },
+          "profil_sol": {
+            "tip": "duz",
+            "olcu": "0"
+          },
+          "profil_sag": {
+            "tip": "duz",
+            "olcu": "0"
+          }
+        }
+      ]
+    }
+  ],
+  "ozellikler": [
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sol",
+      "x": "-t/2",
+      "y": "14",
+      "genislik": "boyun + t",
+      "yukseklik": "",
+      "aci": "0",
+      "boyut": "",
+      "hedefler": [
+        "arka"
+      ],
+      "etiket": ""
+    },
+    {
+      "tip": "kilit_yarigi",
+      "panel": "boyun_sag",
+      "x": "-t/2",
+      "y": "14",
+      "genislik": "boyun + t",
+      "yukseklik": "",
+      "aci": "0",
+      "boyut": "",
+      "hedefler": [
+        "arka"
+      ],
+      "etiket": ""
+    },
+    {
+      "tip": "kilit_yarigi",
+      "panel": "merkez_boyun",
+      "x": "-t/2",
+      "y": "10",
+      "genislik": "kdil + t",
+      "yukseklik": "",
+      "aci": "0",
+      "boyut": "",
+      "hedefler": [
+        "on"
+      ],
+      "etiket": ""
+    },
+    {
+      "tip": "percin",
+      "panel": "serit_on",
+      "x": "sw/2",
+      "y": "kok - 15",
+      "genislik": "",
+      "yukseklik": "",
+      "aci": "",
+      "boyut": "",
+      "hedefler": [
+        "on"
+      ],
+      "etiket": ""
+    },
+    {
+      "tip": "percin",
+      "panel": "serit_on",
+      "x": "sw/2",
+      "y": "kok - 7",
+      "genislik": "",
+      "yukseklik": "",
+      "aci": "",
+      "boyut": "",
+      "hedefler": [
+        "on"
+      ],
+      "etiket": ""
+    },
+    {
+      "tip": "kilit_yarigi",
+      "panel": "serit_arka",
+      "x": "-ts/2",
+      "y": "sy - my",
+      "genislik": "sw + ts",
+      "yukseklik": "",
+      "aci": "0",
+      "boyut": "",
+      "hedefler": [
+        "arka"
+      ],
+      "etiket": "şerit çıkışı"
+    }
+  ],
+  "icerikler": [
+    {
+      "tip": "kart",
+      "adet": 4,
+      "panel": "arka",
+      "x": "",
+      "y": "0.3",
+      "genislik": "",
+      "yukseklik": "",
+      "kalinlik": ""
+    }
+  ],
+  "gecmis": []
+}

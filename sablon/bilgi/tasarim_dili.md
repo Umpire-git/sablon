@@ -83,3 +83,14 @@ içeriğin geçirildiği yarıklar. Malzeme yalnızca deridir: vaketa veya crazy
   kıvrım yarıçapı; ts: şerit kalınlığı; g: alt körük). Montaj y'si ≥ ru + ts + 1.5 olmalı ki U gövdeden taşmasın.
 - Körük, kartlara ek olarak şeridin iki kolunu (ve içeri giren kilit kafalarını) taşımalı: g = S + t + 2*ts.
 - Motor çekince kartların kaç mm yükseleceğini ve tutma ucunun yeterliliğini raporlar (≥15 mm görünmeli).
+
+### Kapaklı çekme şeridi (şerit yuvası) — örnek: tek_merkez_kilitli_cek_cikar.json
+Kapak arka panelin üstünden kartları örtüyorsa şerit ucu üstten çıkamaz (sırtla çakışır). Doğru kuruluş:
+- Şerit kökü ön panelin içinde ALÇAKTA kalır (kısa kök, iki perçin); kapağın merkez kilit kafası kökün ÜSTÜNE düşer
+  (kafa ile kök aynı yüzde, üst üste binmemeli). Kilit yarığı yüksekliği ≈ montaj y + kök boyu + 11.
+- Şeridin dönüş kolu arka panelin içinde yukarı çıkar ve arka paneldeki bir ŞERİT YUVASINDAN dışarı geçer:
+  kolun üst kenarına `kilit_yarigi` (genislik = şerit eni + ts, hedefler: arka panel) ve kolun `ust` kenarına
+  `aci` "0", `yariktan_gecer` true bir "tutma ucu" paneli (genişliği şerit enini GEÇMEZ; kilit değil kayar geçiş).
+- Yuva arka panelin üst kenarından ~8 mm aşağıda; tutma ucu arka panelin üstünden ≥12 mm taşacak boyda (~26 mm).
+- Arka panel kartlardan 2–3 mm uzun; kartların görünmesi için şerit kökünün üst perçini yeterince yüksek olmalı.
+- Kapaklı tasarımlarda kapağın kenarına profil verilecekse o kenara panel bağlanmamalı (profil yalnız serbest kenarda).
