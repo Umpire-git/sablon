@@ -20,7 +20,7 @@ from .design import Tasarim, from_dict
 from .engine import BuildError, build
 
 MODEL = os.environ.get("SABLON_MODEL", "claude-opus-5-5")
-GEMINI_MODEL = os.environ.get("SABLON_GEMINI_TEXT_MODEL", "gemini-2.5-pro")
+GEMINI_MODEL = os.environ.get("SABLON_GEMINI_TEXT_MODEL", "")  # boşsa erişilebilir modellerden otomatik seçilir
 
 
 def provider() -> str:
@@ -209,21 +209,37 @@ def _ask_gemini(content, schema, client, max_tokens, pdf):
                                     "JSON nesnesi olarak ver:\n" + json.dumps(js, ensure_ascii=False),
                                     max_output_tokens=max_tokens, response_mime_type="application/json"),
     ]
+    from . import gemini_models as GM
+    try:
+        model = GEMINI_MODEL or GM.pick_text(client)
+    except Exception:
+        model = "gemini-2.5-pro"
     last = None
-    for i, cfg in enumerate(attempts):
+    i = 0
+    while i < len(attempts):
+        cfg = attempts[i]
         try:
-            resp = client.models.generate_content(model=GEMINI_MODEL, contents=parts, config=cfg)
+            resp = client.models.generate_content(model=model, contents=parts, config=cfg)
         except errors.ClientError as e:
             code = getattr(e, "code", None)
             if code in (401, 403):
                 raise AIError("Gemini anahtarı geçersiz veya yetkisiz (GEMINI_API_KEY).") from e
             if code == 429:
+                try:
+                    alt = GM.pick_fallback(client, model)
+                except Exception:
+                    alt = None
+                if alt:
+                    print(f"  (Gemini {model} kotası doldu; {alt} ile devam ediliyor)")
+                    model = alt
+                    continue
                 raise AIError("Gemini kotası/hız sınırı doldu; biraz sonra tekrar deneyin "
                               "(ücretsiz kotada dakikalık sınır düşüktür).") from e
             if code == 404:
-                raise AIError(f"Gemini modeli bulunamadı: {GEMINI_MODEL}. SABLON_GEMINI_TEXT_MODEL ile güncel bir "
-                              "model adı verin.") from e
+                raise AIError(f"Gemini modeli bulunamadı: {model}. 'sablon modeller' ile erişilebilir modelleri görün, "
+                              "SABLON_GEMINI_TEXT_MODEL ile birini seçin.") from e
             last = e
+            i += 1
             continue  # şema reddedildi → şemasız dene
         except errors.APIError as e:
             raise AIError(f"Gemini API hatası: {e}") from e
@@ -235,6 +251,7 @@ def _ask_gemini(content, schema, client, max_tokens, pdf):
             return schema.model_validate_json(text)
         except Exception as e:  # bozuk/eksik JSON
             last = e
+            i += 1
     raise AIError(f"Gemini yanıtı şemaya uymadı: {last}")
 
 

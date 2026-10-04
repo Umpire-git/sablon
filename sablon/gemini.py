@@ -16,7 +16,7 @@ import os
 
 from PIL import Image
 
-MODEL = os.environ.get("SABLON_GEMINI_MODEL", "gemini-2.5-flash-image")
+MODEL = os.environ.get("SABLON_GEMINI_MODEL", "")  # boşsa erişilebilir görsel modellerinden otomatik seçilir
 
 LEATHER = {
     "vaketa": ("smooth full-grain vegetable-tanned cowhide leather (Turkish 'vaketa'), firm, with a subtle natural "
@@ -66,8 +66,13 @@ def _client():
 def realistic(image: Image.Image, design, scene: str = "studyo", client=None) -> Image.Image:
     from google.genai import types
     client = client or _client()
+    from . import gemini_models as GM
+    try:
+        model = MODEL or GM.pick_image(client)
+    except Exception:
+        model = "gemini-2.5-flash-image"
     resp = client.models.generate_content(
-        model=MODEL,
+        model=model,
         contents=[prompt(design, scene), image],
         config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
     )

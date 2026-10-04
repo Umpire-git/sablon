@@ -297,6 +297,23 @@ def cmd_kalibre(a):
     print(f"Kaydedildi: {path}. Bundan sonraki tüm kalıplar bu değerleri kullanır.")
 
 
+def cmd_modeller(a):
+    from . import gemini_models as GM
+    from .ai import AIError, _gemini_client
+    try:
+        c = _gemini_client()
+        names = GM.list_models(c)
+        print("Erişilebilir Gemini modelleri:")
+        for n in sorted(names):
+            print(f"  {n}")
+        print(f"\nFikir/tasarım için seçilen : {GM.pick_text(c)}")
+        print(f"Kota dolarsa yedek         : {GM.pick_fallback(c, GM.pick_text(c))}")
+        print(f"Görsel için seçilen        : {GM.pick_image(c)}")
+        print("Değiştirmek için: setx SABLON_GEMINI_TEXT_MODEL \"model-adı\" (görsel: SABLON_GEMINI_MODEL)")
+    except AIError as e:
+        raise SystemExit(f"Hata: {e}")
+
+
 def cmd_gecmis(a):
     _, hist = P.load(a.proje)
     for h in hist:
@@ -350,6 +367,9 @@ def main(argv: list[str] | None = None):
     s.add_argument("pdfler", nargs="+"); s.add_argument("--ai", choices=["claude", "gemini"]); s.set_defaults(f=cmd_ogren)
 
     s = sub.add_parser("gecmis", help="Değişiklik geçmişi"); s.add_argument("proje"); s.set_defaults(f=cmd_gecmis)
+
+    s = sub.add_parser("modeller", help="Gemini anahtarınızın erişebildiği modeller ve otomatik seçim")
+    s.set_defaults(f=cmd_modeller)
 
     s = sub.add_parser("kalibrasyon", help="Kendi deriniz için deneme kalıbı (PDF)")
     s.add_argument("--malzeme", default="vaketa", choices=["vaketa", "crazy_horse"])

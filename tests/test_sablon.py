@@ -413,7 +413,7 @@ def test_gemini_keeps_geometry_rules_and_returns_image(tmp_path):
     paths = gemini.realistic_set({"urun": ref}, d, str(tmp_path / "k"), scenes=("studyo", "ahsap"), client=client, log=lambda *_: None)
     assert len(paths) == 2 and all(os.path.exists(p) for p in paths)
     kw = client.models.calls[0]
-    assert kw["contents"][1] is ref and kw["model"] == gemini.MODEL
+    assert kw["contents"][1] is ref and kw["model"]
 
 
 def test_gemini_without_key_is_clear(monkeypatch):
@@ -501,7 +501,7 @@ def test_gemini_ideas_only_return_buildable_designs():
     assert len(res) == 2 and hopeless.ad not in names
     assert all(not [f for f in fs if f.level == "hata"] for _, fs in res)
     first = fg.calls[0]
-    assert first["model"] == ai.GEMINI_MODEL
+    assert first["model"]
     assert "DİKİŞSİZ" in first["config"].system_instruction
     assert first["config"].response_json_schema is not None
     assert "TEKRARLAMA" in fg.calls[-1]["contents"][-1]  # ikinci turda öncekiler bildirildi
@@ -525,3 +525,36 @@ def test_provider_selection(monkeypatch):
     assert ai.provider() == "gemini"
     monkeypatch.setenv("SABLON_AI", "claude")
     assert ai.provider() == "claude"
+
+
+# --- Gemini otomatik model seçimi --------------------------------------------------------------
+def test_gemini_model_picking(monkeypatch):
+    from sablon import gemini_models as GM
+    monkeypatch.delenv("SABLON_GEMINI_TEXT_MODEL", raising=False)
+    monkeypatch.delenv("SABLON_GEMINI_MODEL", raising=False)
+    names = ["gemini-2.5-pro", "gemini-3.1-pro-preview", "gemini-3.8-flash", "gemini-3.5-flash-lite",
+             "gemini-3-pro-image-preview", "gemini-2.5-flash-image", "text-embedding-004", "gemini-embedding-001",
+             "gemini-2.5-flash-preview-tts"]
+    models = [type("M", (), {"name": f"models/{n}", "supported_actions": ["generateContent"]})() for n in names]
+    client = type("C", (), {"models": type("Ms", (), {"list": lambda self: models})()})()
+    GM.reset_cache()
+    assert GM.pick_text(client) == "gemini-3.1-pro-preview"
+    assert GM.pick_fallback(client, "gemini-3.1-pro-preview") == "gemini-3.8-flash"
+    assert GM.pick_image(client) == "gemini-3-pro-image-preview"
+    monkeypatch.setenv("SABLON_GEMINI_TEXT_MODEL", "benim-modelim")
+    assert GM.pick_text(client) == "benim-modelim"
+    GM.reset_cache()
+
+
+def test_gemini_quota_falls_back_to_flash(monkeypatch):
+    from google.genai import errors
+    from sablon import gemini_models as GM
+    monkeypatch.setattr(ai, "GEMINI_MODEL", "")
+    monkeypatch.setattr(GM, "pick_text", lambda c: "gemini-3.1-pro")
+    monkeypatch.setattr(GM, "pick_fallback", lambda c, cur: "gemini-3.8-flash")
+    good = design("vidali_kartlik")
+    fg = FakeGemini(errors.ClientError(429, {"error": {"message": "quota", "status": "RESOURCE_EXHAUSTED"}}),
+                    ai.Fikirler(tasarimlar=[good]))
+    out = ai._ask("x", ai.Fikirler, fg)
+    assert out.tasarimlar[0].ad == good.ad
+    assert [c["model"] for c in fg.calls] == ["gemini-3.1-pro", "gemini-3.8-flash"]

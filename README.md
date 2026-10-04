@@ -48,8 +48,12 @@ geçen paneller, sığmayan kartlar, boşluğa düşen çıtçıt, tutmayan kili
 
 Pencereyi kapatıp yeniden açın, sonra **`fikir.bat`**'a çift tıklayın: ne istediğinizi yazarsınız, fikirler
 `fikirler` klasörüne ve karşılaştırma sayfası `koleksiyon.pdf`'e gelir. İkisi de tanımlıysa seçmek için
-`sablon fikir "..." --ai gemini`. Model adları: `SABLON_GEMINI_TEXT_MODEL` (varsayılan `gemini-2.5-pro`),
-`SABLON_MODEL` (varsayılan `claude-opus-5-5`).
+`sablon fikir "..." --ai gemini`.
+
+Gemini modeli **otomatik seçilir**: program anahtarınızın erişebildiği modelleri Google'dan sorgular; tasarım için
+en yeni **Pro**'yu (ör. 3.1 Pro), Pro'nun kotası dolarsa en yeni **Flash**'ı (ör. 3.8 Flash; Lite değil), görseller
+için en yeni görsel modelini kullanır. Görmek için: `sablon modeller`. Elle seçmek için
+`setx SABLON_GEMINI_TEXT_MODEL "model-adı"` (görsel: `SABLON_GEMINI_MODEL`). Claude modeli: `SABLON_MODEL`.
 
 **Yalnızca uygulanabilir fikirler gösterilir:** her fikir motorda derlenir ve 3B çarpışma, montaj sırası, kart
 hacmi, kilit, çıtçıt teması, kalınlık kontrollerinden SIFIR hatayla geçmelidir. Hatalı fikir yapay zekâya
