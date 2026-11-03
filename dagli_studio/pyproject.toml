@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dagli-studio"
+version = "1.0.0"
+description = "Dagli Leather Studio: dikişsiz origami deri kalıpları için rakip taraması, tasarım, tolerans testi, satış PDF'i, kesim dosyaları, Etsy SEO ve görseller"
+requires-python = ">=3.10"
+dependencies = ["reportlab>=4.0", "shapely>=2.0", "numpy>=1.24", "pillow>=10.0", "pypdf>=4.0", "pypdfium2>=4.0",
+                "pydantic>=2.0", "anthropic>=1.0", "google-genai>=1.0"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+dagli = "dagli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["dagli*"]
+
+[tool.setuptools.package-data]
+dagli = ["assets/*"]
