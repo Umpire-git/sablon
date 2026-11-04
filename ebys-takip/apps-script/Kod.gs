@@ -327,7 +327,8 @@ function personelOku_() {
       ad: String(v[i][0]).trim(),
       eposta: String(v[i][1] || '').trim().toLowerCase(),
       takma: takma,
-      yonetici: /yönetici/i.test(String(v[i][3] || ''))
+      yonetici: /yönetici/i.test(String(v[i][3] || '')),
+      ortak: /ortak/i.test(String(v[i][3] || ''))          // kalite@ gibi birkaç kişinin kullandığı hesap
     });
   }
   return liste;
@@ -443,8 +444,8 @@ function seciliSatirlariTamamla() {
 }
 
 /** Panel: seçilen görevleri topluca tamamla */
-function topluTamamla(idler) {
-  var ben = yetkiKontrol_();
+function topluTamamla(idler, kimAdi) {
+  var ben = islemYapan_(yetkiKontrol_(), kimAdi);
   var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
   try {
     var sec = {}; (idler || []).forEach(function (x) { sec[x] = true; });
@@ -732,6 +733,12 @@ function kim_() {
   return null;
 }
 
+/** Ortak hesapla girildiyse panelde seçilen kişi adına işlem yapılır */
+function islemYapan_(ben, kimAdi) {
+  if (ben.ortak && kimAdi && personel_().some(function (p) { return p.ad === kimAdi; })) return { ad: kimAdi, yonetici: false };
+  return ben;
+}
+
 function yetkiKontrol_() {
   var ben = kim_();
   if (!ben) throw new Error('Yetkiniz yok');
@@ -750,16 +757,17 @@ function panelVerisi() {
     return o;
   });
   return {
-    ben: { ad: ben.ad, yonetici: ben.yonetici },
-    personel: personel_().map(function (p) { return p.ad; }),
+    ben: { ad: ben.ad, yonetici: ben.yonetici, ortak: !!ben.ortak },
+    kisiler: personel_().filter(function (p) { return !p.ortak; }).map(function (p) { return p.ad; }),
+    personel: personel_().filter(function (p) { return !p.ortak; }).map(function (p) { return p.ad; }),
     durumlar: DURUMLAR,
     gorevler: gorevler
   };
 }
 
 /** alanlar: {Durum, Sorumlu, Açıklama} */
-function gorevGuncelle(id, alanlar) {
-  var ben = yetkiKontrol_();
+function gorevGuncelle(id, alanlar, kimAdi) {
+  var ben = islemYapan_(yetkiKontrol_(), kimAdi);
   var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
   try {
     var g = gorevler_().filter(function (x) { return x.ID === id; })[0];
@@ -782,7 +790,7 @@ function gorevGuncelle(id, alanlar) {
 
 /** o: {Konu, Not, Sorumlu, Evrak Tarihi, Açıklama} */
 function gorevEkle(o) {
-  var ben = yetkiKontrol_();
+  var ben = islemYapan_(yetkiKontrol_(), o && o.kim);
   if (!o || !String(o.Konu || '').trim()) throw new Error('Konu boş olamaz');
   var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
   try {

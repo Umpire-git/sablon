@@ -50,10 +50,15 @@ sadece paneli kullanır. Betiği EBYS'ye görev düşen kişinin bilgisayarına 
 | Ali DAĞLI | ali.dagli@usak.edu.tr | Ali | Personel |
 | Zeynep … | …@usak.edu.tr | Zeynep, Zeynep Hanım | Personel |
 | (hoca) | …@usak.edu.tr | | Yönetici |
+| Kalite Koordinatörlüğü | kalite@usak.edu.tr | | Ortak |
 
 - Hocanın notlarda yazdığı adları "Notta geçen adlar" sütununa yazın. Ad Soyad'ın ilk kelimesi
   zaten otomatik olarak eklenir. Büyük/küçük harf ve Türkçe karakter fark etmez: "ALI" ve "ali"
   de Ali olarak tanınır.
+- Birkaç kişinin kullandığı ortak bir hesap (örn. kalite@usak.edu.tr) varsa onu da **Rol = Ortak** ile
+  ekleyin. Bu hesapla panele girildiğinde sağ üstte "Ben:" kutusundan kişi seçilir; seçim o tarayıcıda
+  hatırlanır ve yapılan işlemler o kişi adına kaydedilir. Ortak hesap görev atanacak kişiler listesinde
+  çıkmaz.
 - Aynı adı taşıyan iki kişi varsa, birine farklı bir ad yazın (örn. "Ali K.") ve hocadan notlarda
   o şekilde yazmasını isteyin.
 

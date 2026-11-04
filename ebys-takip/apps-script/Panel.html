@@ -71,6 +71,13 @@
 <div id="durum"></div>
 
 <script>
+var KIM = '';
+try { KIM = localStorage.getItem('ebysTakipBen') || ''; } catch (e) {}
+function benAd() { return V.ben.ortak ? KIM : V.ben.ad; }
+function kimSec(ad) {
+  KIM = ad; try { localStorage.setItem('ebysTakipBen', ad); } catch (e) {}
+  ciz();
+}
 var V = null, sekme = 'benim', SECILI = {}, GORUNEN = [];
 var F = { ara: '', durum: 'acik', kisi: '' };
 
@@ -89,7 +96,7 @@ function yukle() {
 }
 
 function sekmeler() {
-  var benim = V.gorevler.filter(function (g) { return g.Sorumlu === V.ben.ad && acik(g); }).length;
+  var benim = V.gorevler.filter(function (g) { return g.Sorumlu === benAd() && acik(g); }).length;
   var genel = V.gorevler.filter(function (g) { return g.Sorumlu === 'Genel' && acik(g); }).length;
   var tum = V.gorevler.filter(acik).length;
   var s = [['benim', 'Benim işlerim', benim], ['genel', 'Genel / atanmamış', genel], ['tum', 'Tüm görevler', tum],
@@ -114,7 +121,19 @@ function kartlar() {
 function sekmeSec(s) { sekme = s; ciz(); }
 
 function ciz() {
-  document.getElementById('ben').textContent = V.ben.ad + (V.ben.yonetici ? ' · yönetici' : '');
+  if (V.ben.ortak && V.kisiler.indexOf(KIM) < 0) KIM = '';
+  document.getElementById('ben').innerHTML = V.ben.ortak
+    ? 'Ortak hesap · Ben: <select onchange="kimSec(this.value)" style="font:inherit;padding:3px 6px;border-radius:6px">' +
+      '<option value="">— seçin —</option>' + V.kisiler.map(function (k) {
+        return '<option ' + (k === KIM ? 'selected' : '') + '>' + esc(k) + '</option>'; }).join('') + '</select>'
+    : esc(V.ben.ad) + (V.ben.yonetici ? ' · yönetici' : '');
+  if (V.ben.ortak && !KIM) {
+    sekmeler(); kartlar();
+    document.getElementById('icerik').innerHTML = '<div class="bos">Bu bilgisayarda ortak hesap (' + '' +
+      'birkaç kişinin kullandığı hesap) açık. Sağ üstteki <b>Ben</b> kutusundan adınızı seçin; ' +
+      'seçiminiz bu tarayıcıda hatırlanır.</div>';
+    return;
+  }
   sekmeler();
   kartlar();
   var el = document.getElementById('icerik');
@@ -137,7 +156,7 @@ function filtreHtml() {
 
 function listeCiz() {
   var l = V.gorevler.filter(function (g) {
-    if (sekme === 'benim' && g.Sorumlu !== V.ben.ad) return false;
+    if (sekme === 'benim' && g.Sorumlu !== benAd()) return false;
     if (sekme === 'genel' && g.Sorumlu !== 'Genel') return false;
     if (sekme === 'tum' && F.kisi && g.Sorumlu !== F.kisi) return false;
     if (F.durum === 'acik' && !acik(g)) return false;
@@ -207,13 +226,13 @@ function topluTamamla() {
   if (!idler.length || !confirm(idler.length + ' görev Tamamlandı yapılsın mı?')) return;
   bildir(idler.length + ' görev tamamlanıyor…', 10000);
   google.script.run.withSuccessHandler(function (v) { V = v; SECILI = {}; ciz(); bildir(idler.length + ' görev tamamlandı'); })
-    .withFailureHandler(hata).topluTamamla(idler);
+    .withFailureHandler(hata).topluTamamla(idler, benAd());
 }
 
 function guncelle(id, alanlar) {
   bildir('Kaydediliyor…');
   google.script.run.withSuccessHandler(function (v) { V = v; sekmeler(); listeCiz(); bildir('Kaydedildi'); })
-    .withFailureHandler(hata).gorevGuncelle(id, alanlar);
+    .withFailureHandler(hata).gorevGuncelle(id, alanlar, benAd());
 }
 
 function ozet() {
@@ -240,7 +259,7 @@ function yeniForm() {
 function ekle(f) {
   bildir('Ekleniyor…');
   google.script.run.withSuccessHandler(function (v) { V = v; sekme = 'tum'; F.durum = 'acik'; ciz(); bildir('Görev eklendi'); })
-    .withFailureHandler(hata).gorevEkle({ Konu: f.k.value, Not: f.n.value, Sorumlu: f.s.value, 'Evrak Tarihi': f.t.value, 'Açıklama': f.a.value });
+    .withFailureHandler(hata).gorevEkle({ kim: benAd(), Konu: f.k.value, Not: f.n.value, Sorumlu: f.s.value, 'Evrak Tarihi': f.t.value, 'Açıklama': f.a.value });
   return false;
 }
 
