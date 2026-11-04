@@ -1,7 +1,17 @@
 # EBYS Görev Takip — Kurulum
 
 Kalite Koordinatörlüğü için: EBYS'ye sevk edilen yazıları ve hocanın notlarını okur, notta adı
-geçen kişiye görev olarak atar, takip panelinde gösterir, PDF'i Drive'a koyar.
+geçen kişiye görev olarak atar, takip panelinde gösterir. Ayrıca yazıyı **mevcut gelen-giden evrak
+tablonuza** satır olarak ekler ve PDF'i Drive'da **İş ve İşlemler / Gelen Yazı** ya da
+**Giden Yazı** klasörüne koyar.
+
+**Aynı yazı iki kez işlenmez:**
+- Sistem işlediği her evrak numarasını kendi **Aktarım Kaydı** sekmesine yazar. Kayıttaki bir evrak
+  tablolara bir daha yazılmaz, satırı sonradan silseniz bile.
+- Evrak no ya da sayı evrak tablonuzda zaten varsa (örneğin elle girilmişse) satır eklenmez.
+- Sistem dolu hiçbir hücrenin, formülün ya da satırın üstüne yazmaz. Yalnızca son kaydın altındaki
+  boş satıra yazar.
+- Drive'da aynı evrak numarasıyla başlayan bir dosya varsa PDF yeniden yüklenmez.
 
 ```
 EBYS (tarayıcıda açık)  ──►  Tampermonkey betiği  ──►  Google Sheets + Apps Script  ──►  Takip paneli
@@ -17,7 +27,9 @@ sadece paneli kullanır. Betiği EBYS'ye görev düşen kişinin bilgisayarına 
 ## 1. Google Sheets ve kod (bir kez, kurumsal hesapla)
 
 1. Kurumsal Google hesabınızla <https://sheets.new> adresinden yeni bir tablo açın. Adını
-   **"EBYS Görev Takip"** koyun.
+   **"EBYS Görev Takip"** koyun. Bu ayrı dosyadır: mevcut evrak tablonuza **hiç sekme eklenmez**,
+   oraya yalnızca satır yazılır. Bu dosyayı açan hesabın evrak tablonuzda **düzenleme yetkisi**
+   olmalıdır.
 2. Menüden **Uzantılar → Apps Script**'i açın.
 3. Soldaki `Kod.gs` dosyasının içini silin ve bu klasördeki `apps-script/Kod.gs` dosyasının
    tamamını yapıştırın.
@@ -45,9 +57,29 @@ sadece paneli kullanır. Betiği EBYS'ye görev düşen kişinin bilgisayarına 
 - Aynı adı taşıyan iki kişi varsa, birine farklı bir ad yazın (örn. "Ali K.") ve hocadan notlarda
   o şekilde yazmasını isteyin.
 
-**Drive:** iki klasör açın, örneğin **"EBYS – İşlemde"** ve **"EBYS – Tamamlanan"**. Her klasörü
-açtığınızda adres çubuğundaki `…/folders/` sonrasındaki uzun kodu **Ayarlar** sayfasında
-`ISLEMDE_KLASOR_ID` ve `TAMAMLANAN_KLASOR_ID` satırlarına yapıştırın. Klasörleri ekiple paylaşın.
+**Drive:** **"İş ve İşlemler"** adında bir klasör açın. Klasörü açınca adres çubuğunda
+`…/folders/` sonrasında uzun bir kod görünür. Bu kodu **Ayarlar** sayfasında
+`IS_ISLEMLER_KLASOR_ID` satırına yapıştırın. Klasörün içinde **Gelen Yazı** ve **Giden Yazı**
+klasörleri yoksa sistem bunları kendisi açar. PDF'ler `[382726] MEDEK Ödemesi Hk..pdf` gibi bir
+adla kaydedilir. Klasörü ekiple paylaşın.
+
+**Evrak tablosu:** Ayarlar sayfasında şu değerler hazır gelir:
+- `EVRAK_TABLO_ID`: sizin tablonuz.
+- `GELEN_SEKME` = `#3352743`: verdiğiniz bağlantıdaki sekme.
+
+Giden yazılar başka bir sekmede tutuluyorsa `GIDEN_SEKME` satırına o sekmenin adını yazın.
+Bir tür için tabloya yazma işini kapatmak isterseniz `GELEN_TABLOYA_YAZ` ya da
+`GIDEN_TABLOYA_YAZ` satırını `HAYIR` yapın.
+
+Ardından menüden **EBYS Takip → Evrak tablosu sütun eşleşmesini göster**'i çalıştırın. Sistem başlık
+satırını ve hangi bilginin hangi sütuna yazılacağını gösterir, örneğin "Konu: G (Konu)". Başlıkları
+kendisi tanır: Sıra No, Gelen/Giden, Tarih, Sayı, Evrak/Kayıt No, Geldiği Yer, Konu, Sorumlu,
+Dosya/Link, Açıklama.
+
+Eşleşme yanlışsa Ayarlar sayfasına yeni bir satır ekleyin, örneğin `SUTUN_KONU` | `D`.
+Bir alanın hiç yazılmamasını istiyorsanız değer olarak `-` yazın. Kullanılabilecek adlar:
+`SUTUN_SIRA`, `SUTUN_TUR`, `SUTUN_KAYITNO`, `SUTUN_SAYI`, `SUTUN_EVRAKTARIHI`, `SUTUN_KAYITTARIHI`,
+`SUTUN_YER`, `SUTUN_KONU`, `SUTUN_SORUMLU`, `SUTUN_DOSYA`, `SUTUN_ACIKLAMA`, `SUTUN_DOSYAKODU`.
 
 ## 3. Web uygulamasını yayınlama
 
@@ -99,8 +131,15 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
   açıp **Notlar** bölümünü okur ve takip tablosuna gönderir. Hocanın notu "Ali: … Zeynep: …"
   biçimindeyse her kişiye ayrı görev açılır. Notta kimsenin adı geçmiyorsa görev
   **Genel / atanmamış** sekmesine düşer.
-- Evrakın PDF'i **İşlemde** klasörüne `[382726] MEDEK Ödemesi Hk..pdf` gibi bir adla kaydedilir.
-- Bir evraka bağlı bütün görevler **Tamamlandı** olunca PDF **Tamamlanan / 2026-11** klasörüne taşınır.
+- Yeni bir yazı aynı anda **evrak tablonuza** da satır olarak eklenir. Satırda tür, evrak no,
+  tarih, geldiği yer, konu, dosya kodu, sorumlu ve hocanın notu yer alır; tabloda sütunu olmayan
+  bilgi yazılmaz. Sıra numarası bir önceki satırın bir fazlası olarak verilir; o hücrede formül
+  varsa ona dokunulmaz.
+- "Gelen Evrak Bilgilerini Güncelleyiniz" görevleri **gelen** sayılır. "Kurum Dışına Gönderilmiş
+  Olan Evrak…" görevleri **giden** sayılır.
+- PDF, **İş ve İşlemler / Gelen Yazı** (ya da **Giden Yazı**) klasörüne gider. Linki takip
+  panelinde görünür ve evrak tablosunda **sistemin eklediği satırın** boş Dosya/Link hücresine
+  yazılır. Elle girilmiş satırlara dokunulmaz.
 - Bir evrak sayfasını açtığınızda kutuda **"Takibe al + PDF'i Drive'a gönder"** düğmesi çıkar. Bununla
   tek bir evrakı elle de gönderebilirsiniz.
 - Ana sayfa açık bırakılırsa ayarladığınız aralıkla yenilenir ve yeni gelenleri kendisi alır.
@@ -113,7 +152,6 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
   açılışında aktarılır.
 - **Gizlilik:** Gizli ya da kişisel veri içeren evrakları Drive'a koymadan önce birim kurallarını
   kontrol edin. Drive klasörlerini yalnızca ekiple paylaşın.
-- **Gelen-giden evrak** entegrasyonu sonraki adımda yapılacak.
 
 ## Sorun giderme
 
@@ -121,6 +159,8 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
 |---|---|
 | Kutuda "Anahtar hatalı" yazıyor | Ayarlardaki anahtarı Sheets'teki ile karşılaştırın. |
 | "Sunucu yanıtı okunamadı" yazıyor | Betik adresinin `/exec` ile bittiğinden ve dağıtımın "Herkes" erişiminde olduğundan emin olun. Olmuyorsa 3. adımdaki nota bakın. |
-| Görev geliyor ama PDF gelmiyor | `ISLEMDE_KLASOR_ID` dolu mu kontrol edin. Evrak sayfasında elle gönder düğmesini deneyin. Yine olmazsa tarayıcı konsolundaki `[EBYS Takip]` satırlarını iletin. |
+| Görev geliyor ama PDF gelmiyor | `IS_ISLEMLER_KLASOR_ID` dolu mu kontrol edin. Evrak sayfasında elle gönder düğmesini deneyin. Yine olmazsa tarayıcı konsolundaki `[EBYS Takip]` satırlarını iletin. |
 | Notta adı geçen kişi bulunamadı | Personel sayfasındaki "Notta geçen adlar" sütununa o yazılışı ekleyin. Görevi panelden elle atayın. |
+| Evrak tablosuna satır gelmiyor | **Aktarım Kaydı** sekmesindeki "Not" sütununa bakın, hata orada yazar. Menüden sütun eşleşmesini kontrol edin. Kurulumu yapan hesabın evrak tablosunda düzenleme yetkisi olmalı. |
+| Bir evrakı bilerek yeniden yazdırmak istiyorum | O evrakın satırını **Aktarım Kaydı** sekmesinden silin. Evrak tablonuzda hâlâ varsa yine yazılmaz. |
 | Panel "yetkiniz yok" diyor | Kişinin e-postası Personel sayfasında birebir aynı mı kontrol edin. |

@@ -5,7 +5,8 @@
  *  - doPost : tarayıcı betiğinden gelen EBYS görevleri ve PDF'ler (gizli anahtarla)
  */
 
-var SAYFA = { GOREV: 'Görevler', PERSONEL: 'Personel', AYAR: 'Ayarlar' };
+var SAYFA = { GOREV: 'Görevler', PERSONEL: 'Personel', AYAR: 'Ayarlar', KAYIT: 'Aktarım Kaydı' };
+var KAYIT_SUTUN = ['Evrak No', 'Tür', 'Konu', 'Tabloya yazıldı', 'Tablo satırı', 'Drive dosyası', 'Tarih', 'Not'];
 
 var GOREV_SUTUN = [
   'ID', 'Kaynak', 'Evrak No', 'Konu', 'Gönderen', 'Not Yazan', 'Not Tarihi', 'Hocanın Notu',
@@ -22,6 +23,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('EBYS Takip')
     .addItem('Kurulum / onarım', 'kurulum')
     .addItem('Gizli anahtarı göster', 'anahtariGoster')
+    .addItem('Evrak tablosu sütun eşleşmesini göster', 'eslesmeyiGoster')
     .addToUi();
 }
 
@@ -36,15 +38,20 @@ function kurulum() {
   var a = sayfaHazirla_(ss, SAYFA.AYAR, ['Ayar', 'Değer', 'Açıklama']);
   var varsayilan = [
     ['GIZLI_ANAHTAR', Utilities.getUuid(), 'Tarayıcı betiğine girilecek anahtar. Kimseyle paylaşmayın.'],
-    ['ISLEMDE_KLASOR_ID', '', 'EBYS PDF\'lerinin ilk konduğu Drive klasörünün ID\'si (adres çubuğundaki /folders/ sonrası).'],
-    ['TAMAMLANAN_KLASOR_ID', '', 'Görev tamamlanınca PDF\'in taşınacağı klasör. Boşsa yerinde kalır.'],
-    ['AY_ALT_KLASORU', 'EVET', 'EVET ise tamamlananlar 2026-11 gibi ay klasörlerine ayrılır.'],
+    ['EVRAK_TABLO_ID', '1PbWGU0V8KlrQ6ZEujhvalkxzTdk7gIQPE1dPJXZdYPw', 'Gelen-giden evrak tablonuzun ID\'si (adresteki /d/ ile /edit arası).'],
+    ['GELEN_SEKME', '#3352743', 'Gelen yazıların yazılacağı sekmenin adı. # ile başlarsa adresteki gid numarasıdır.'],
+    ['GIDEN_SEKME', '#3352743', 'Giden yazıların yazılacağı sekme (gelenle aynı olabilir).'],
+    ['GELEN_TABLOYA_YAZ', 'EVET', 'EVET ise yeni gelen yazılar evrak tablosuna otomatik satır olarak eklenir.'],
+    ['GIDEN_TABLOYA_YAZ', 'EVET', 'EVET ise EBYS\'de "Kurum Dışına Gönderilmiş Olan Evrak" görevleri giden olarak eklenir.'],
+    ['IS_ISLEMLER_KLASOR_ID', '', '"İş ve İşlemler" Drive klasörünün ID\'si. İçinde "Gelen Yazı" ve "Giden Yazı" klasörleri yoksa açılır.'],
+    ['AY_ALT_KLASORU', 'HAYIR', 'EVET ise PDF\'ler Gelen Yazı/2026-11 gibi ay klasörlerine ayrılır.'],
     ['EPOSTA_BILDIRIM', 'EVET', 'EVET ise görev atanınca kişiye e-posta gider.'],
     ['ALAN_ADI', 'usak.edu.tr', 'Panele yalnızca bu alan adındaki hesaplar girebilir.']
   ];
   var mevcut = a.getDataRange().getValues().map(function (r) { return r[0]; });
   varsayilan.forEach(function (v) { if (mevcut.indexOf(v[0]) < 0) a.appendRow(v); });
 
+  sayfaHazirla_(ss, SAYFA.KAYIT, KAYIT_SUTUN);
   var g = ss.getSheetByName(SAYFA.GOREV);
   var durumKurali = SpreadsheetApp.newDataValidation().requireValueInList(DURUMLAR, true).build();
   g.getRange(2, sutun_('Durum'), g.getMaxRows() - 1, 1).setDataValidation(durumKurali);
@@ -213,6 +220,7 @@ function gorevleriAl_(liste, kullanici) {
   var eklenen = 0, dosyaIstenen = [];
 
   liste.forEach(function (it) {
+    try { if (it.evrak && it.evrakNo) evrakTablosunaYaz_(it); } catch (e) { kayitNotu_(it.evrakNo, 'Tabloya yazılamadı: ' + e.message); }
     var notlar = (it.notlar && it.notlar.length) ? it.notlar : [{ yazan: '', tarih: '', metin: '' }];
     var dosyaVar = false, yeni = false;
     notlar.forEach(function (n) {
@@ -232,31 +240,53 @@ function gorevleriAl_(liste, kullanici) {
       });
       yeni = true;
     });
-    if (it.evrakNo && !dosyaVar && (yeni || !evrakDosyasi_(it.evrakNo))) dosyaIstenen.push(it.evrakNo);
+    if (it.evrakNo && !dosyaVar && !kayitBul_(it.evrakNo).dosya) dosyaIstenen.push(it.evrakNo);
   });
   return { tamam: true, eklenen: eklenen, dosyaIstenen: dosyaIstenen };
 }
 
-function evrakDosyasi_(evrakNo) {
-  var g = gorevler_().filter(function (x) { return String(x['Evrak No']) === String(evrakNo) && x.Dosya; })[0];
-  return g ? g.Dosya : '';
-}
-
-/** veri: {evrakNo, dosyaAdi, mime, base64} */
+/** veri: {evrakNo, tur, dosyaAdi, mime, base64} — aynı evrak ikinci kez yüklenmez */
 function dosyaAl_(veri) {
-  var klasorId = ayar_('ISLEMDE_KLASOR_ID');
-  if (!klasorId) throw new Error('Ayarlar sayfasında ISLEMDE_KLASOR_ID boş');
-  var mevcutLink = evrakDosyasi_(veri.evrakNo);
-  if (mevcutLink) return { tamam: true, link: mevcutLink, zatenVardi: true };
-  var blob = Utilities.newBlob(Utilities.base64Decode(veri.base64), veri.mime || 'application/pdf',
-    '[' + veri.evrakNo + '] ' + (veri.dosyaAdi || 'evrak.pdf'));
-  var dosya = DriveApp.getFolderById(klasorId).createFile(blob);
-  var link = dosya.getUrl();
+  var kayit = kayitBul_(veri.evrakNo);
+  if (kayit.dosya) return { tamam: true, link: kayit.dosya, zatenVardi: true };
+  var tur = veri.tur || kayit.tur || 'Gelen';
+  var klasor = turKlasoru_(tur);
+  var onEk = '[' + veri.evrakNo + ']';
+  var it = klasor.searchFiles('title contains "' + onEk + '" and trashed = false');
+  var link;
+  if (it.hasNext()) {
+    link = it.next().getUrl();
+  } else {
+    var blob = Utilities.newBlob(Utilities.base64Decode(veri.base64), veri.mime || 'application/pdf',
+      onEk + ' ' + (veri.dosyaAdi || 'evrak.pdf'));
+    link = klasor.createFile(blob).getUrl();
+  }
+  kayitYaz_(veri.evrakNo, { 'Drive dosyası': link });
+
+  // Görevler sayfasında boş "Dosya" hücrelerine link
   var sh = SpreadsheetApp.getActive().getSheetByName(SAYFA.GOREV);
   gorevler_().forEach(function (g) {
-    if (String(g['Evrak No']) === String(veri.evrakNo)) sh.getRange(g._satir, sutun_('Dosya')).setValue(link);
+    if (String(g['Evrak No']) === String(veri.evrakNo) && !g.Dosya) sh.getRange(g._satir, sutun_('Dosya')).setValue(link);
   });
+  // Evrak tablosunda yalnızca boş dosya hücresine link
+  try { evrakTablosunaLink_(veri.evrakNo, kayit, link); } catch (e) { /* tablo erişilemezse PDF yine Drive'da */ }
   return { tamam: true, link: link };
+}
+
+function turKlasoru_(tur) {
+  var anaId = ayar_('IS_ISLEMLER_KLASOR_ID');
+  if (!anaId) throw new Error('Ayarlar sayfasında IS_ISLEMLER_KLASOR_ID boş');
+  var ad = tur === 'Giden' ? 'Giden Yazı' : 'Gelen Yazı';
+  var k = altKlasor_(DriveApp.getFolderById(anaId), ad);
+  if (ayar_('AY_ALT_KLASORU') === 'EVET') {
+    k = altKlasor_(k, Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM'));
+  }
+  return k;
+}
+
+function altKlasor_(ust, ad) {
+  var it = ust.getFoldersByName(ad);
+  return it.hasNext() ? it.next() : ust.createFolder(ad);
 }
 
 function bildir_(kisiAdi, id, konu, metin, personel) {
@@ -341,7 +371,6 @@ function gorevGuncelle(id, alanlar) {
     if (alanlar.Durum === 'Tamamlandı' && g.Durum !== 'Tamamlandı') {
       sh.getRange(g._satir, sutun_('Tamamlanma')).setValue(new Date());
       sh.getRange(g._satir, sutun_('Tamamlayan')).setValue(ben.ad);
-      dosyayiTasi_(g);
     }
     if (alanlar.Durum && alanlar.Durum !== 'Tamamlandı' && g.Durum === 'Tamamlandı') {
       sh.getRange(g._satir, sutun_('Tamamlanma')).setValue('');
@@ -349,29 +378,6 @@ function gorevGuncelle(id, alanlar) {
     }
   } finally { kilit.releaseLock(); }
   return panelVerisi();
-}
-
-/** Aynı evrakın bütün görevleri tamamlanınca PDF hedef klasöre taşınır. */
-function dosyayiTasi_(g) {
-  var hedefId = ayar_('TAMAMLANAN_KLASOR_ID');
-  if (!hedefId || !g.Dosya || !g['Evrak No']) return;
-  var acik = gorevler_().filter(function (x) {
-    return String(x['Evrak No']) === String(g['Evrak No']) && x.ID !== g.ID &&
-      x.Durum !== 'Tamamlandı' && x.Durum !== 'İptal';
-  });
-  if (acik.length) return;
-  var m = String(g.Dosya).match(/[-\w]{25,}/);
-  if (!m) return;
-  try {
-    var dosya = DriveApp.getFileById(m[0]);
-    var hedef = DriveApp.getFolderById(hedefId);
-    if (ayar_('AY_ALT_KLASORU') === 'EVET') {
-      var ay = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
-      var it = hedef.getFoldersByName(ay);
-      hedef = it.hasNext() ? it.next() : hedef.createFolder(ay);
-    }
-    dosya.moveTo(hedef);
-  } catch (e) { /* dosya silinmiş ya da yetki yoksa görev yine tamamlanır */ }
 }
 
 /** o: {Görev, Konu, Sorumlu, Son Tarih, Açıklama} */
@@ -388,6 +394,240 @@ function gorevEkle(o) {
     if (o.Sorumlu && o.Sorumlu !== GENEL) bildir_(o.Sorumlu, id, o.Konu, o['Görev']);
   } finally { kilit.releaseLock(); }
   return panelVerisi();
+}
+
+// ---------------------------------------------------------------- aktarım kaydı
+// Sistemin işlediği her evrak burada tutulur. Kayıtta olan evrak tablolara bir daha yazılmaz,
+// satır sonradan silinse ya da değiştirilse bile.
+
+function kayitSayfasi_() {
+  var ss = SpreadsheetApp.getActive();
+  return ss.getSheetByName(SAYFA.KAYIT) || sayfaHazirla_(ss, SAYFA.KAYIT, KAYIT_SUTUN);
+}
+
+function kayitBul_(no) {
+  var v = kayitSayfasi_().getDataRange().getValues();
+  for (var i = 1; i < v.length; i++) {
+    if (String(v[i][0]).trim() === String(no).trim()) {
+      return { satir: i + 1, tur: v[i][1], tablo: v[i][3], tabloSatiri: v[i][4], dosya: v[i][5] };
+    }
+  }
+  return {};
+}
+
+/** Kayıt yoksa ekler; varsa yalnızca BOŞ hücreleri doldurur (Not sütunu hariç, ona eklenir). */
+function kayitYaz_(no, alanlar) {
+  var sh = kayitSayfasi_();
+  var k = kayitBul_(no);
+  if (!k.satir) {
+    sh.appendRow(KAYIT_SUTUN.map(function (b) {
+      if (b === 'Evrak No') return String(no);
+      if (b === 'Tarih') return new Date();
+      return alanlar[b] === undefined ? '' : alanlar[b];
+    }));
+    return;
+  }
+  Object.keys(alanlar).forEach(function (b) {
+    var c = KAYIT_SUTUN.indexOf(b) + 1;
+    if (c < 1) return;
+    var hucre = sh.getRange(k.satir, c);
+    if (b === 'Not') hucre.setValue([hucre.getValue(), alanlar[b]].filter(String).join(' | '));
+    else if (hucre.getValue() === '') hucre.setValue(alanlar[b]);
+  });
+}
+
+function kayitNotu_(no, metin) { if (no) kayitYaz_(no, { 'Not': metin }); }
+
+// ---------------------------------------------------------------- gelen-giden evrak tablosu
+
+var ALANLAR = [
+  ['dosyaKodu', /dosya ?(kodu|plani|no)|standart dosya/],
+  ['tur', /gelen.{0,3}giden|giden.{0,3}gelen|^turu?$|evrak turu|^tipi?$|cinsi/],
+  ['sayi', /sayisi?\b|^sayi/],
+  ['kayitNo', /(evrak|kayit|kurum|genel|ebys).*(\bno\b|nosu|numara)|numarator|^kayit$/],
+  ['evrakTarihi', /(evrak|yazi|belge).*tarih/],
+  ['kayitTarihi', /tarih/],
+  ['konu', /konu|ozet|icerik/],
+  ['yer', /geldigi|gonderen|kimden|nereden|gittigi|gonderilen|kime|nereye|kurum|birim|makam|muhatap/],
+  ['sorumlu', /sorumlu|havale|gorevli|ilgilenen|personel|atanan/],
+  ['dosya', /dosya|link|baglanti|pdf|drive/],
+  ['aciklama', /aciklama|not|talimat|yapilacak|islem/],
+  ['sira', /^(s\.? ?no|sira( no)?|no|#)$/]
+];
+var ALAN_ADI = {
+  dosyaKodu: 'Dosya kodu', tur: 'Gelen/Giden', sayi: 'Sayı', kayitNo: 'Evrak no', evrakTarihi: 'Evrak tarihi',
+  kayitTarihi: 'Kayıt tarihi', konu: 'Konu', yer: 'Geldiği/gittiği yer', sorumlu: 'Sorumlu', dosya: 'Drive linki',
+  aciklama: 'Açıklama (hocanın notu)', sira: 'Sıra no'
+};
+
+function hedefSekme_(tur) {
+  var ss = SpreadsheetApp.openById(ayar_('EVRAK_TABLO_ID'));
+  var ad = ayar_(tur === 'Giden' ? 'GIDEN_SEKME' : 'GELEN_SEKME');
+  if (/^#\d+$/.test(ad)) {
+    var gid = Number(ad.slice(1));
+    var sh = ss.getSheets().filter(function (x) { return x.getSheetId() === gid; })[0];
+    if (sh) return sh;
+  } else if (ad && ss.getSheetByName(ad)) return ss.getSheetByName(ad);
+  throw new Error('Evrak tablosunda sekme bulunamadı: ' + ad);
+}
+
+function sutunHarfi_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
+
+/** Başlık satırını (ilk 10 satırda en çok eşleşen) ve alan → sütun eşleşmesini bulur. */
+function eslesme_(sh) {
+  var n = Math.min(10, sh.getLastRow());
+  var genislik = sh.getLastColumn();
+  if (n < 1 || genislik < 1) throw new Error('Sekme boş: ' + sh.getName());
+  var v = sh.getRange(1, 1, n, genislik).getDisplayValues();
+  var enIyi = { puan: 0 };
+  v.forEach(function (satir, i) {
+    var sut = {}, puan = 0;
+    satir.forEach(function (h, j) {
+      var hs = sade_(h).replace(/\s+/g, ' ').trim();
+      if (!hs || hs.length > 40) return;
+      for (var a = 0; a < ALANLAR.length; a++) {
+        if (sut[ALANLAR[a][0]] === undefined && ALANLAR[a][1].test(hs)) { sut[ALANLAR[a][0]] = j + 1; puan++; break; }
+      }
+    });
+    if (puan > enIyi.puan) enIyi = { puan: puan, basSatir: i + 1, sutunlar: sut, basliklar: satir };
+  });
+  if (enIyi.puan < 2) throw new Error('"' + sh.getName() + '" sekmesinde başlık satırı tanınamadı');
+  // Elle düzeltme: Ayarlar'da SUTUN_KONU = C ya da başlık adı
+  Object.keys(ALAN_ADI).forEach(function (alan) {
+    var d = ayar_('SUTUN_' + alan.toUpperCase());
+    if (!d) return;
+    if (d === '-') { delete enIyi.sutunlar[alan]; return; }
+    if (/^[A-Z]{1,2}$/i.test(d)) {
+      var c = 0; d.toUpperCase().split('').forEach(function (h) { c = c * 26 + h.charCodeAt(0) - 64; });
+      enIyi.sutunlar[alan] = c;
+    } else {
+      var j = enIyi.basliklar.map(function (h) { return sade_(h).trim(); }).indexOf(sade_(d).trim());
+      if (j >= 0) enIyi.sutunlar[alan] = j + 1;
+    }
+  });
+  return enIyi;
+}
+
+function eslesmeyiGoster() {
+  var metin = [];
+  ['Gelen', 'Giden'].forEach(function (tur) {
+    try {
+      var sh = hedefSekme_(tur), e = eslesme_(sh);
+      metin.push(tur + ' → "' + sh.getName() + '" sekmesi, başlık satırı ' + e.basSatir);
+      Object.keys(ALAN_ADI).forEach(function (a) {
+        var c = e.sutunlar[a];
+        metin.push('   ' + ALAN_ADI[a] + ': ' + (c ? sutunHarfi_(c) + ' (' + e.basliklar[c - 1] + ')' : '— yazılmaz'));
+      });
+    } catch (err) { metin.push(tur + ': ' + err.message); }
+    metin.push('');
+  });
+  metin.push('Yanlış eşleşme varsa Ayarlar sayfasına örn. SUTUN_KONU = D satırı ekleyin ("-" yazarsanız o alan yazılmaz).');
+  SpreadsheetApp.getUi().alert(metin.join('\n'));
+}
+
+function hucreBos_(sh, r, c) {
+  var h = sh.getRange(r, c);
+  return h.getValue() === '' && h.getFormula() === '';
+}
+
+function trTarih_(s) {
+  var m = String(s || '').match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+  return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : (s || '');
+}
+
+/** Bir sütunda evrak numarası var mı (elle girilmiş ya da önceden yazılmış) */
+function tablodaVarMi_(sh, e, it) {
+  var son = sh.getLastRow();
+  if (son <= e.basSatir) return 0;
+  var bas = e.basSatir + 1, adet = son - e.basSatir;
+  var no = String(it.evrakNo).trim();
+  var bak = function (c, esitMi) {
+    if (!c) return 0;
+    var v = sh.getRange(bas, c, adet, 1).getDisplayValues();
+    for (var i = 0; i < v.length; i++) if (esitMi(String(v[i][0]).trim())) return bas + i;
+    return 0;
+  };
+  var r = bak(e.sutunlar.kayitNo, function (x) { return x === no || x.replace(/\D/g, '') === no; });
+  if (!r) r = bak(e.sutunlar.sayi, function (x) { return x && (x === no || new RegExp('(^|\\D)' + no + '$').test(x) || (it.evrak.sayi && x === it.evrak.sayi)); });
+  if (!r && !e.sutunlar.kayitNo && !e.sutunlar.sayi && e.sutunlar.konu) {
+    // Numara sütunu yoksa: aynı konu + aynı tarih
+    var tc = e.sutunlar.kayitTarihi || e.sutunlar.evrakTarihi;
+    var konu = sade_(it.evrak.konu || it.konu).trim();
+    var kv = sh.getRange(bas, e.sutunlar.konu, adet, 1).getDisplayValues();
+    var tv = tc ? sh.getRange(bas, tc, adet, 1).getValues() : null;
+    var hedefT = trTarih_(it.evrak.kayitTarihi);
+    for (var i = 0; i < kv.length; i++) {
+      if (sade_(kv[i][0]).trim() !== konu) continue;
+      if (!tv || !(hedefT instanceof Date) || (tv[i][0] instanceof Date && tv[i][0].toDateString() === hedefT.toDateString())) return bas + i;
+    }
+  }
+  return r;
+}
+
+/** it: betikten gelen görev + it.evrak {tur, konu, kayitTarihi, evrakTarihi, sayi, yer, dosyaKodu} */
+function evrakTablosunaYaz_(it) {
+  var ev = it.evrak, tur = ev.tur === 'Giden' ? 'Giden' : 'Gelen', no = String(it.evrakNo);
+  var kayit = kayitBul_(no);
+  if (kayit.tablo) return;                                      // daha önce işlendi: dokunma
+  if (ayar_(tur === 'Giden' ? 'GIDEN_TABLOYA_YAZ' : 'GELEN_TABLOYA_YAZ') !== 'EVET') {
+    kayitYaz_(no, { 'Tür': tur, 'Konu': ev.konu || it.konu, 'Tabloya yazıldı': 'Hayır (ayar kapalı)' });
+    return;
+  }
+  var sh = hedefSekme_(tur), e = eslesme_(sh), S = e.sutunlar;
+
+  var varOlan = tablodaVarMi_(sh, e, it);
+  if (varOlan) {
+    kayitYaz_(no, { 'Tür': tur, 'Konu': ev.konu || it.konu, 'Tabloya yazıldı': 'Zaten vardı', 'Tablo satırı': varOlan });
+    return;
+  }
+
+  // Son dolu satırın altındaki, eşleşen hücreleri tamamen boş ilk satır
+  var anaSutunlar = Object.keys(S).map(function (k) { return S[k]; });
+  var son = e.basSatir;
+  var veriSon = sh.getLastRow();
+  if (veriSon > e.basSatir) {
+    var v = sh.getRange(e.basSatir + 1, 1, veriSon - e.basSatir, sh.getLastColumn()).getDisplayValues();
+    var anahtar = [S.konu, S.kayitNo, S.sayi].filter(Boolean);
+    if (!anahtar.length) anahtar = anaSutunlar;
+    for (var i = v.length - 1; i >= 0; i--) {
+      if (anahtar.some(function (c) { return String(v[i][c - 1]).trim() !== ''; })) { son = e.basSatir + 1 + i; break; }
+    }
+  }
+  var r = son + 1;
+  while (!anaSutunlar.every(function (c) { return c === S.sira || hucreBos_(sh, r, c); })) r++;
+  if (r > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), r - sh.getMaxRows());
+
+  var sorumlular = [];
+  (it.notlar || []).forEach(function (n) {
+    notuBol(n.metin).forEach(function (p) { if (p.kisi !== GENEL && sorumlular.indexOf(p.kisi) < 0) sorumlular.push(p.kisi); });
+  });
+  var deger = {
+    tur: tur, kayitNo: no, sayi: ev.sayi || '', evrakTarihi: trTarih_(ev.evrakTarihi || (S.kayitTarihi ? '' : ev.kayitTarihi)),
+    kayitTarihi: trTarih_(ev.kayitTarihi || ev.evrakTarihi), konu: ev.konu || it.konu, yer: ev.yer || '',
+    dosyaKodu: ev.dosyaKodu || '', sorumlu: sorumlular.join(', '),
+    aciklama: (it.notlar || []).map(function (n) { return n.metin; }).filter(String).join(' / ')
+  };
+  if (S.sira && hucreBos_(sh, r, S.sira) && r > e.basSatir + 1) {
+    var onceki = Number(String(sh.getRange(r - 1, S.sira).getDisplayValue()).replace(/\D/g, ''));
+    if (onceki) deger.sira = onceki + 1;
+  }
+  Object.keys(deger).forEach(function (a) {
+    if (!S[a] || deger[a] === '' || deger[a] === undefined) return;
+    if (!hucreBos_(sh, r, S[a])) return;                        // hiçbir dolu hücrenin üstüne yazılmaz
+    sh.getRange(r, S[a]).setValue(deger[a]);
+  });
+  kayitYaz_(no, { 'Tür': tur, 'Konu': deger.konu, 'Tabloya yazıldı': 'Evet', 'Tablo satırı': r });
+}
+
+/** PDF linki: yalnızca sistemin kendi eklediği satıra ve hücre boşsa */
+function evrakTablosunaLink_(no, kayit, link) {
+  kayit = kayitBul_(no);
+  if (kayit.tablo !== 'Evet' || !kayit.tabloSatiri) return;
+  var sh = hedefSekme_(kayit.tur), e = eslesme_(sh);
+  if (!e.sutunlar.dosya) return;
+  var r = Number(kayit.tabloSatiri);
+  if (e.sutunlar.kayitNo && String(sh.getRange(r, e.sutunlar.kayitNo).getDisplayValue()).trim() !== String(no)) return;
+  if (hucreBos_(sh, r, e.sutunlar.dosya)) sh.getRange(r, e.sutunlar.dosya).setValue(link);
 }
 
 // ---------------------------------------------------------------- deneme

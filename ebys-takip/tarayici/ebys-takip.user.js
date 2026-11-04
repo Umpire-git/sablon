@@ -129,6 +129,46 @@
     return el ? el.textContent.trim() : '';
   }
 
+  /** Evrak tablosu için: tür, konu, tarih, sayı, geldiği/gittiği yer, dosya kodu */
+  function evrakBilgisi(doc, o) {
+    o = o || {};
+    var statik = function (id) {
+      var el = doc.querySelector('#' + id + ' .form-control-static');
+      return el ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+    };
+    var alanlar = {};
+    doc.querySelectorAll('.form-control-static').forEach(function (el) {
+      var grup = el.closest('.form-group');
+      var lbl = grup && grup.querySelector('label');
+      var v = el.textContent.replace(/\s+/g, ' ').trim();
+      if (lbl && v && !alanlar[lbl.textContent.trim()]) alanlar[lbl.textContent.trim()] = v;
+    });
+    var bul = function (re) {
+      var k = Object.keys(alanlar).filter(function (x) { return re.test(x); })[0];
+      return k ? alanlar[k] : '';
+    };
+    var metin = [o.gorevAdi, o.gonderen, doc.title].join(' ');
+    var tur = /gönderilmiş|giden/i.test(metin) && !/gelen evrak/i.test(o.gorevAdi || '') ? 'Giden' : 'Gelen';
+    var yerOku = function (onEk) {
+      var parca = [];
+      doc.querySelectorAll('[id^="' + onEk + '"][id$="_text_spn"], [id^="' + onEk + '"] .form-control-static').forEach(function (el) {
+        var t = el.textContent.replace(/\s+/g, ' ').trim();
+        if (t && !/^[\d\s.-]+$/.test(t) && parca.indexOf(t) < 0) parca.push(t);
+      });
+      return parca.map(function (t) { return t.split('»').pop().trim(); }).join(', ');
+    };
+    var kod = doc.getElementById('ctl00_cp_ucClassificationCode_txtControlRhea_text');
+    return {
+      tur: tur,
+      konu: statik('ctl00_cp_txtDocumentSubject') || o.konu || '',
+      kayitTarihi: statik('ctl00_cp_txtOrgDocumentDate') || bul(/kayıt tarihi/i),
+      evrakTarihi: bul(/^(evrak|yazı|belge) tarihi/i),
+      sayi: bul(/sayı/i),
+      yer: tur === 'Giden' ? (yerOku('ctl00_cp_ucDocumentTo_') || yerOku('ctl00_cp_ucDocumentFrom_')) : yerOku('ctl00_cp_ucDocumentFrom_'),
+      dosyaKodu: kod ? (kod.value || kod.textContent || '').trim() : ''
+    };
+  }
+
   function sayfaGetir(url) {
     return fetch(url, { credentials: 'include' }).then(function (r) {
       if (!r.ok) throw new Error('EBYS sayfası açılamadı (' + r.status + ')');
@@ -206,11 +246,11 @@
     });
   }
 
-  function pdfGonder(sayfa, evrakNo) {
+  function pdfGonder(sayfa, evrakNo, tur) {
     return pdfIndir(sayfa).then(function (p) {
       if (p.blob.size > 40 * 1024 * 1024) throw new Error('PDF 40 MB\'tan büyük');
       return blobBase64(p.blob).then(function (b64) {
-        return sunucu({ islem: 'dosya', evrakNo: evrakNo, dosyaAdi: p.dosyaAdi, mime: p.blob.type || 'application/pdf', base64: b64 });
+        return sunucu({ islem: 'dosya', evrakNo: evrakNo, tur: tur || 'Gelen', dosyaAdi: p.dosyaAdi, mime: p.blob.type || 'application/pdf', base64: b64 });
       });
     });
   }
@@ -234,6 +274,7 @@
         o.notlar = notlariOku(s.doc);
         o.evrakNo = o.evrakNo || evrakNoOku(s.doc);
         o.link = s.url;
+        o.evrak = evrakBilgisi(s.doc, o);
         sayfalar[o.evrakNo] = s;
         paket.push(o);
       }, function (e) { console.warn('[EBYS Takip]', o.konu, e); })
@@ -245,7 +286,7 @@
       return sunucu({
         islem: 'gorevler', kullanici: kullanici(),
         gorevler: paket.map(function (o) {
-          return { evrakNo: o.evrakNo, konu: o.konu, gonderen: o.gonderen, gorevAdi: o.gorevAdi, link: o.link, notlar: o.notlar };
+          return { evrakNo: o.evrakNo, konu: o.konu, gonderen: o.gonderen, gorevAdi: o.gorevAdi, link: o.link, notlar: o.notlar, evrak: o.evrak };
         })
       });
     }).then(function (c) {
@@ -253,12 +294,13 @@
       paket.forEach(function (o) { g[o.anahtar] = Date.now(); });
       GM_setValue('gonderilen', g);
       var istenen = (c.dosyaIstenen || []).filter(function (n) { return sayfalar[n]; });
+      var turu = {}; paket.forEach(function (o) { turu[o.evrakNo] = o.evrak && o.evrak.tur; });
       var j = 0, hatali = 0;
       var dosya = function () {
         if (j >= istenen.length) return Promise.resolve();
         var n = istenen[j++];
         durum('PDF gönderiliyor ' + j + '/' + istenen.length + ' (evrak ' + n + ')');
-        return pdfGonder(sayfalar[n], n).catch(function (e) { hatali++; console.warn('[EBYS Takip] PDF', n, e); }).then(dosya);
+        return pdfGonder(sayfalar[n], n, turu[n]).catch(function (e) { hatali++; console.warn('[EBYS Takip] PDF', n, e); }).then(dosya);
       };
       return dosya().then(function () {
         durum(c.eklenen + ' görev eklendi' + (istenen.length ? ', ' + (istenen.length - hatali) + '/' + istenen.length + ' PDF Drive\'a gitti' : ''), true);
@@ -283,16 +325,16 @@
     var b = dugme('Takibe al + PDF\'i Drive\'a gönder', function () {
       var sayfa = { doc: document, html: document.documentElement.outerHTML, url: location.href };
       var evrakNo = evrakNoOku(document);
-      var konuEl = document.querySelector('#ctl00_cp_divTaskDetails, .task-detail-name');
       var baslik = document.title.trim();
+      var ev = evrakBilgisi(document, { gorevAdi: baslik });
       durum('Gönderiliyor…');
       sunucu({
         islem: 'gorevler', kullanici: kullanici(),
-        gorevler: [{ evrakNo: evrakNo, konu: (konuEl && yazi(konuEl)) || baslik, gonderen: '', gorevAdi: baslik, link: location.href, notlar: notlariOku(document) }]
+        gorevler: [{ evrakNo: evrakNo, konu: ev.konu || baslik, gonderen: '', gorevAdi: baslik, link: location.href, notlar: notlariOku(document), evrak: ev }]
       }).then(function (c) {
-        if (!evrakNo) return c;
-        return pdfGonder(sayfa, evrakNo).then(function () { return c; });
-      }).then(function (c) { durum((c.eklenen || 0) + ' görev eklendi, PDF Drive\'da', true); },
+        if (!evrakNo || (c.dosyaIstenen || []).indexOf(evrakNo) < 0) return c;
+        return pdfGonder(sayfa, evrakNo, ev.tur).then(function () { return c; });
+      }).then(function (c) { durum((c.eklenen || 0) + ' yeni görev; evrak daha önce işlendiyse tekrar yazılmadı', true); },
         function (e) { durum('Hata: ' + e.message, true); });
     });
     kutu().appendChild(b);
