@@ -62,6 +62,7 @@ function kurulum() {
   var durumKurali = SpreadsheetApp.newDataValidation().requireValueInList(DURUMLAR, true).build();
   g.getRange(2, sutun_('Durum'), g.getMaxRows() - 1, 1).setDataValidation(durumKurali);
   bitmisleriTasi_();
+  konulariEkle_();
   gorunumuDuzenle_();
   SpreadsheetApp.getUi().alert('Kurulum tamam. Şimdi Personel sayfasını doldurun, sonra Dağıt → Yeni dağıtım ile web uygulaması oluşturun.');
 }
@@ -188,15 +189,15 @@ function ozetSayfasi_(ss) {
   o.getRange('A7:D7').setValues([['Kişi', 'Açık', 'Geciken', 'Bu ay biten']])
     .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
   o.getRange('B7:D40').setHorizontalAlignment('center');
-  o.getRange('F7:J7').setValues([['Açık işler (son tarihe göre)', 'Sorumlu', 'Durum', 'Son tarih', 'Evrak']])
+  o.getRange('F7:K7').setValues([['Konu', 'Açık işler (son tarihe göre)', 'Sorumlu', 'Durum', 'Son tarih', 'Evrak']])
     .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
-  o.getRange('I8:I40').setNumberFormat('dd.mm.yyyy');
-  o.getRange('F8:J40').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setFontSize(10);
+  o.getRange('J8:J40').setNumberFormat('dd.mm.yyyy');
+  o.getRange('F8:K40').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setFontSize(10);
   o.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor('#c0392b').setBold(true)
       .setRanges([o.getRange('C8:C40')]).build()
   ]);
-  [150, 70, 70, 85, 24, 320, 130, 105, 90, 80].forEach(function (w, i) { o.setColumnWidth(i + 1, w); });
+  [150, 70, 70, 85, 24, 220, 280, 125, 100, 85, 70].forEach(function (w, i) { o.setColumnWidth(i + 1, w); });
   o.getRange('A1:H3').setWrapStrategy(SpreadsheetApp.WrapStrategy.OVERFLOW);
   o.setTabColor('#c0392b');
   ozetGuncelle_();
@@ -228,15 +229,15 @@ function ozetGuncelle_() {
   });
   if (satirlar.length) o.getRange(8, 1, satirlar.length, 4).setValues(satirlar);
 
-  o.getRange('F8:J40').clearContent();
+  o.getRange('F8:K40').clearContent();
   var liste = acik.slice().sort(function (a, b) {
     var ta = a['Son Tarih'] instanceof Date ? a['Son Tarih'].getTime() : Infinity;
     var tb = b['Son Tarih'] instanceof Date ? b['Son Tarih'].getTime() : Infinity;
     return ta - tb;
   }).slice(0, 33).map(function (g) {
-    return [g['Görev'] || g.Konu, g.Sorumlu, g.Durum, g['Son Tarih'] || '', g['Evrak No']];
+    return [g.Konu || '', konusuzGorev_(g), g.Sorumlu, g.Durum, g['Son Tarih'] || '', g['Evrak No']];
   });
-  if (liste.length) o.getRange(8, 6, liste.length, 5).setValues(liste);
+  if (liste.length) o.getRange(8, 6, liste.length, 6).setValues(liste);
   else o.getRange('F8').setValue('Açık iş yok');
 
   o.getRange('A3').setValue('Son güncelleme: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm'))
@@ -391,6 +392,30 @@ function tarihYazi_(d) {
   return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
 }
 
+var KONU_AYRAC = ' → ';
+/** "MEDEK Ödemesi Hk. → acil yazalım" */
+function konuluGorev_(konu, metin) {
+  konu = String(konu || '').trim(); metin = String(metin || '').trim();
+  if (!konu) return metin;
+  if (!metin || metin === konu) return konu;
+  return metin.indexOf(konu + KONU_AYRAC) === 0 ? metin : konu + KONU_AYRAC + metin;
+}
+/** Görev metninden baştaki konuyu çıkarır (konu ayrı gösterildiğinde tekrar etmesin) */
+function konusuzGorev_(g) {
+  var m = String(g['Görev'] || ''), k = String(g.Konu || '');
+  return k && m.indexOf(k + KONU_AYRAC) === 0 ? m.slice(k.length + KONU_AYRAC.length) : m;
+}
+
+/** Kurulumda: eski EBYS görevlerinin metnine konuyu ekle */
+function konulariEkle_() {
+  var ss = SpreadsheetApp.getActive();
+  gorevler_().forEach(function (g) {
+    if (g.Kaynak !== 'EBYS' || !g.Konu) return;
+    var yeni = konuluGorev_(g.Konu, g['Görev']);
+    if (yeni !== g['Görev']) ss.getSheetByName(g._sayfa).getRange(g._satir, sutun_('Görev')).setValue(yeni);
+  });
+}
+
 function yeniId_() { return 'G' + Utilities.formatDate(new Date(), 'GMT', 'yyMMdd') + '-' + Utilities.getUuid().slice(0, 4); }
 
 /** Kaydı Görevler sayfasına ekler, ID döner. */
@@ -404,6 +429,12 @@ function gorevYaz_(o) {
 }
 
 // ---------------------------------------------------------------- not ayrıştırma
+
+/** İsimden sonraki metin, ismin görev alan değil sadece adı geçen kişi olduğunu gösteriyor mu */
+function bahsediliyor_(sonrasi) {
+  if (/^['’`´]\s*[a-z]/.test(sonrasi)) return true;                         // Berker'in, Ali'ye
+  return /^\s+(hoca|bey|hanim|hn)(n?in|n?un|y?a|y?e|y?i|y?u|dan|den|tan|ten|yla|yle|la|le|m?in|ma|me|mi|si|su|lar)(?![a-z0-9])/.test(sonrasi);
+}
 
 /**
  * "Ali: rapor yazısını hazırla. Zeynep şu tabloyu doldursun" →
@@ -427,6 +458,8 @@ function notuBol(not, personel) {
       }
     });
   });
+  // "berker hocanın işini", "zeynep hanıma sor", "Ali'nin yazısı": kişiden bahsediliyor, görev verilmiyor
+  bulunan = bulunan.filter(function (b) { return !bahsediliyor_(k.slice(b.son)); });
   bulunan.sort(function (a, b) { return a.bas - b.bas || b.son - a.son; });
   // iç içe eşleşmeleri ele ("ali" ve "ali bey" gibi)
   var temiz = [];
@@ -441,7 +474,7 @@ function notuBol(not, personel) {
   temiz.forEach(function (b, i) {
     var bitis = i + 1 < temiz.length ? temiz[i + 1].bas : metin.length;
     var t = metin.slice(b.son, bitis)
-      .replace(/^\s*(bey|hanım|hn\.?|bey'?in|hanım'?ın)(?=[\s:,]|$)/i, '')
+      .replace(/^\s*(bey|hanım|hn\.?|hoca|hocam)(?=[\s:,]|$)/i, '')
       .replace(/^[\s:,\-–—]+/, '').replace(/^(de|da|ise)\s+/i, '')
       .replace(/(^|[\s,]+)(ve|ile)?[\s,]*$/i, '').trim();
     var onceki = parca.filter(function (x) { return x.kisi === b.kisi; })[0];
@@ -486,6 +519,7 @@ function gorevleriAl_(liste, kullanici) {
 
   liste.slice().reverse().forEach(function (it) {
     try { if (it.evrak && it.evrakNo) evrakTablosunaYaz_(it); } catch (e) { kayitNotu_(it.evrakNo, 'Tabloya yazılamadı: ' + e.message); }
+    var konu = (it.evrak && it.evrak.konu) || it.konu || '';
     var notlar = (it.notlar && it.notlar.length) ? it.notlar : [{ yazan: '', tarih: '', metin: '' }];
     var dosyaVar = false, yeni = false;
     notlar.forEach(function (n) {
@@ -494,13 +528,13 @@ function gorevleriAl_(liste, kullanici) {
       var parcalar = n.metin ? notuBol(n.metin, personel) : [{ kisi: GENEL, metin: it.gorevAdi || '' }];
       parcalar.forEach(function (p, i) {
         var id = gorevYaz_({
-          'Kaynak': 'EBYS', 'Evrak No': it.evrakNo || '', 'Konu': it.konu || '', 'Gönderen': it.gonderen || '',
+          'Kaynak': 'EBYS', 'Evrak No': it.evrakNo || '', 'Konu': konu, 'Gönderen': it.gonderen || '',
           'Not Yazan': n.yazan || '', 'Not Tarihi': n.tarih || '', 'Hocanın Notu': n.metin || '',
-          'Görev': p.metin, 'Sorumlu': p.kisi, 'Ekleyen': kullanici || 'EBYS betiği',
+          'Görev': konuluGorev_(konu, p.metin), 'Sorumlu': p.kisi, 'Ekleyen': kullanici || 'EBYS betiği',
           'EBYS Linki': it.link || '', 'Anahtar': i === 0 ? anahtar : anahtar + '#' + i
         });
         if (i === 0) mevcut[anahtar] = { Dosya: '' };
-        if (p.kisi !== GENEL) bildir_(p.kisi, id, it.konu, p.metin, personel);
+        if (p.kisi !== GENEL) bildir_(p.kisi, id, konu, p.metin, personel);
         eklenen++;
       });
       yeni = true;

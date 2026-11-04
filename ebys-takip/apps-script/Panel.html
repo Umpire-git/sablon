@@ -170,13 +170,18 @@ function kart(g) {
     (g['Evrak No'] ? '<span class="rozet">Evrak ' + esc(g['Evrak No']) + '</span>' : '<span class="rozet">' + esc(g.Kaynak) + '</span>') +
     (gecikti(g) ? '<span class="rozet k">Gecikti</span>' : '') +
     '<span class="etiket">' + esc(g['Gönderen'] || g.Ekleyen) + ' · ' + esc(g.Eklenme) + '</span></div>' +
-    (g.Konu ? '<div class="gorev">' + esc(g['Görev']) + '</div>' : '') + not +
+    (g.Konu ? '<div class="gorev">' + esc(gorevMetni(g)) + '</div>' : '') + not +
     '<div class="alt">' + kisiSec + durumSec +
     '<input type="date" value="' + esc(g['Son Tarih']) + '" title="Son tarih" onchange="guncelle(\'' + id + '\',{\'Son Tarih\':this.value})">' +
     '<input class="aciklama" placeholder="Açıklama / ne yapıldı" value="' + esc(g['Açıklama']) + '" onchange="guncelle(\'' + id + '\',{\'Açıklama\':this.value})">' +
     (g.Dosya ? '<a href="' + esc(g.Dosya) + '" target="_blank">PDF</a>' : '') +
     (g['EBYS Linki'] ? '<a href="' + esc(g['EBYS Linki']) + '" target="_blank">EBYS</a>' : '') +
     tamam + '</div></div>';
+}
+
+function gorevMetni(g) {
+  var m = String(g['Görev'] || ''), k = String(g.Konu || '') + ' → ';
+  return g.Konu && m.indexOf(k) === 0 ? m.slice(k.length) : m;
 }
 
 function guncelle(id, alanlar) {
