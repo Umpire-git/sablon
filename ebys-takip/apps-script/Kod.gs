@@ -39,7 +39,7 @@ function kurulum() {
   var varsayilan = [
     ['GIZLI_ANAHTAR', Utilities.getUuid(), 'Tarayıcı betiğine girilecek anahtar. Kimseyle paylaşmayın.'],
     ['EVRAK_TABLO_ID', '1PbWGU0V8KlrQ6ZEujhvalkxzTdk7gIQPE1dPJXZdYPw', 'Gelen-giden evrak tablonuzun ID\'si (adresteki /d/ ile /edit arası).'],
-    ['GELEN_SEKME', '#3352743', 'Gelen yazıların yazılacağı sekmenin adı. # ile başlarsa adresteki gid numarasıdır.'],
+    ['GELEN_SEKME', '#1192504650', 'Gelen yazıların yazılacağı sekmenin adı. # ile başlarsa adresteki gid numarasıdır.'],
     ['GIDEN_SEKME', '#3352743', 'Giden yazıların yazılacağı sekme (gelenle aynı olabilir).'],
     ['GELEN_TABLOYA_YAZ', 'EVET', 'EVET ise yeni gelen yazılar evrak tablosuna otomatik satır olarak eklenir.'],
     ['GIDEN_TABLOYA_YAZ', 'EVET', 'EVET ise EBYS\'de "Kurum Dışına Gönderilmiş Olan Evrak" görevleri giden olarak eklenir.'],

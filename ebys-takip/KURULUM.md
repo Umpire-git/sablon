@@ -65,7 +65,7 @@ adla kaydedilir. Klasörü ekiple paylaşın.
 
 **Evrak tablosu:** Ayarlar sayfasında şu değerler hazır gelir:
 - `EVRAK_TABLO_ID`: sizin tablonuz.
-- `GELEN_SEKME` = `#3352743`: verdiğiniz bağlantıdaki sekme.
+- `GELEN_SEKME` = `#1192504650` (2026 GELEN YAZILAR), `GIDEN_SEKME` = `#3352743` (2026 GİDEN YAZILAR). Sekme adını da yazabilirsiniz. Yeni yılda yeni sekme açtığınızda bu iki satırı güncelleyin.
 
 Giden yazılar başka bir sekmede tutuluyorsa `GIDEN_SEKME` satırına o sekmenin adını yazın.
 Bir tür için tabloya yazma işini kapatmak isterseniz `GELEN_TABLOYA_YAZ` ya da
