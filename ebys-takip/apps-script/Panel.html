@@ -25,6 +25,9 @@
   .filtre input, .filtre select { padding:7px 9px; border:1px solid var(--kenar); border-radius:6px; font:inherit; background:#fff; }
   .filtre input[type=search] { flex:1; min-width:180px; }
   .kart { background:#fff; border:1px solid var(--kenar); border-left:4px solid var(--mavi); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+  .secim { display:flex; flex-wrap:wrap; gap:8px; align-items:center; background:#eef3fa; border:1px solid var(--kenar); border-radius:8px; padding:8px 12px; margin-bottom:10px; }
+  .kart .sec { width:18px; height:18px; margin:0 4px 0 0; accent-color:var(--yesil); cursor:pointer; }
+  .kart.secili { outline:2px solid var(--yesil); }
   .kart.yeni { border-left-color:var(--kirmizi); }
   .not { margin:6px 0; white-space:pre-wrap; }
   .not small { color:var(--soluk); }
@@ -68,7 +71,7 @@
 <div id="durum"></div>
 
 <script>
-var V = null, sekme = 'benim';
+var V = null, sekme = 'benim', SECILI = {}, GORUNEN = [];
 var F = { ara: '', durum: 'acik', kisi: '' };
 
 function bildir(m, sure) {
@@ -151,7 +154,9 @@ function listeCiz() {
     if (acik(a) !== acik(b)) return acik(a) ? -1 : 1;
     return String(b['Eklenme']).localeCompare(String(a['Eklenme']));
   });
-  document.getElementById('liste').innerHTML = l.length ? l.map(kart).join('') : '<div class="bos">Gösterilecek görev yok.</div>';
+  GORUNEN = l.filter(acik).map(function (g) { return g.ID; });
+  document.getElementById('liste').innerHTML = secimCubugu() +
+    (l.length ? l.map(kart).join('') : '<div class="bos">Gösterilecek görev yok.</div>');
 }
 
 function kart(g) {
@@ -166,8 +171,10 @@ function kart(g) {
     (g['Not Yazan'] ? ' <small>— ' + esc(g['Not Yazan']) + ' ' + esc(g['Not Tarihi']) + '</small>' : '') + '</div>' : '';
   var tamam = g.Durum === 'Tamamlandı' ? '<span class="etiket">✓ ' + esc(g.Tamamlayan) + ' · ' + esc(g.Tamamlanma) + '</span>' :
     '<button class="btn yesil" onclick="guncelle(\'' + id + '\',{Durum:\'Tamamlandı\'})">Tamamlandı</button>';
-  return '<div class="kart ' + sinif + '">' +
-    '<div class="ust"><span class="konu">' + esc(g.Konu || gorevMetni(g)) + '</span>' +
+  var kutu = acik(g) ? '<input type="checkbox" class="sec" title="Toplu işlem için seç" ' + (SECILI[g.ID] ? 'checked' : '') +
+    ' onchange="sec(\'' + id + '\', this.checked)">' : '';
+  return '<div class="kart ' + sinif + (SECILI[g.ID] ? ' secili' : '') + '">' +
+    '<div class="ust">' + kutu + '<span class="konu">' + esc(g.Konu || gorevMetni(g)) + '</span>' +
     (g['Evrak No'] ? '<span class="rozet">Evrak ' + esc(g['Evrak No']) + '</span>' : '<span class="rozet">' + esc(g.Kaynak) + '</span>') +
     (g['Evrak Tarihi'] ? '<span class="etiket">Evrak tarihi: ' + esc(g['Evrak Tarihi']) + '</span>' : '') +
     (bugunGelen(g) ? '<span class="rozet k">Bugün geldi</span>' : '') + '</div>' +
@@ -182,6 +189,25 @@ function kart(g) {
 function gorevMetni(g) {
   var m = String(g['Görev'] || ''), k = String(g.Konu || '') + ' → ';
   return g.Konu && m.indexOf(k) === 0 ? m.slice(k.length) : m;
+}
+
+function secimCubugu() {
+  var n = Object.keys(SECILI).length;
+  if (!GORUNEN.length) return '';
+  return '<div class="secim">' +
+    (n ? '<b>' + n + ' görev seçili</b><button class="btn yesil" onclick="topluTamamla()">Seçilenleri tamamla</button>' +
+         '<button class="btn ince" onclick="SECILI={};listeCiz()">Seçimi temizle</button>'
+       : '<span class="etiket">Birden çok görevi birlikte tamamlamak için soldaki kutuları işaretleyin.</span>') +
+    '<button class="btn ince" onclick="tumunuSec()">Listedekilerin tümünü seç (' + GORUNEN.length + ')</button></div>';
+}
+function sec(id, acikMi) { if (acikMi) SECILI[id] = true; else delete SECILI[id]; listeCiz(); }
+function tumunuSec() { GORUNEN.forEach(function (id) { SECILI[id] = true; }); listeCiz(); }
+function topluTamamla() {
+  var idler = Object.keys(SECILI);
+  if (!idler.length || !confirm(idler.length + ' görev Tamamlandı yapılsın mı?')) return;
+  bildir(idler.length + ' görev tamamlanıyor…', 10000);
+  google.script.run.withSuccessHandler(function (v) { V = v; SECILI = {}; ciz(); bildir(idler.length + ' görev tamamlandı'); })
+    .withFailureHandler(hata).topluTamamla(idler);
 }
 
 function guncelle(id, alanlar) {

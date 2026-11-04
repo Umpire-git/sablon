@@ -133,7 +133,11 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
   - **Görevler:** açık işler. En yeni görev en üstte durur. Görünen sütunlar: Evrak No, Evrak Tarihi,
     Konu, Hocanın Notu, Sorumlu, Durum, Açıklama, Dosya, Eklenme.
   - **Tamamlananlar:** Durum "Tamamlandı" ya da "İptal" yapılınca görev otomatik olarak buraya taşınır.
-    Tekrar "Bekliyor" ya da "Devam Ediyor" yapılırsa Görevler'e geri döner. Durumu panelden ya da
+    Tekrar "Bekliyor" ya da "Devam Ediyor" yapılırsa Görevler'e geri döner.
+    **Toplu tamamlama:** Panelde görevlerin solundaki kutuları işaretleyip **"Seçilenleri tamamla"**ya
+    basın ("Listedekilerin tümünü seç" de var). Tabloda ise Görevler sekmesinde satırları seçip
+    **EBYS Takip → Seçili satırları tamamla**'yı kullanın ya da Durum hücrelerine toplu olarak
+    "Tamamlandı" yapıştırın. Durumu panelden ya da
     doğrudan tablodan değiştirebilirsiniz.
   - Teknik sütunlar (ID, anahtar vb.) gizlidir. Uzun notlar satırı uzatmaz; notun tamamını görmek
     için hücreye tıklayın ya da paneli kullanın.

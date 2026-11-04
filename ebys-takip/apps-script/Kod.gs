@@ -32,6 +32,8 @@ function onOpen() {
     .addItem('Evrak tablosu sütun eşleşmesini göster', 'eslesmeyiGoster')
     .addItem('Görünümü düzenle (renkler, gizli sütunlar, özet)', 'gorunumuDuzenle')
     .addItem('Özeti yenile', 'ozetGuncelle_')
+    .addSeparator()
+    .addItem('Seçili satırları tamamla', 'seciliSatirlariTamamla')
     .addToUi();
 }
 
@@ -395,17 +397,67 @@ function bitmisleriTasi_() {
 }
 
 /** Tabloda "Durum" elle değiştirilince de taşı */
+/** Tabloda "Durum" elle değiştirilince taşı. Birden çok satıra birden yapıştırma da desteklenir. */
 function onEdit(e) {
   try {
     var sh = e.range.getSheet(), ad = sh.getName();
-    if ((ad !== SAYFA.GOREV && ad !== SAYFA.ARSIV) || e.range.getRow() < 2) return;
-    if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1 || e.range.getColumn() !== sutun_('Durum') ||
-        !sh.getRange(e.range.getRow(), sutun_('ID')).getValue()) { ozetGuncelleGuvenli_(); return; }
-    var eposta = String(Session.getActiveUser().getEmail() || '').toLowerCase();
-    var p = personel_().filter(function (x) { return x.eposta === eposta; })[0];
-    durumaGoreTasi_(ad, e.range.getRow(), String(e.value || ''), p ? p.ad : eposta);
+    if (ad !== SAYFA.GOREV && ad !== SAYFA.ARSIV) return;
+    var dc = sutun_('Durum'), r = e.range;
+    if (r.getColumn() > dc || r.getLastColumn() < dc || r.getLastRow() < 2) { ozetGuncelleGuvenli_(); return; }
+    var bas = Math.max(2, r.getRow()), n = r.getLastRow() - bas + 1;
+    var durumlar = sh.getRange(bas, dc, n, 1).getValues();
+    var idler = sh.getRange(bas, sutun_('ID'), n, 1).getValues();
+    var kim = kimAdi_();
+    for (var i = n - 1; i >= 0; i--) {                         // alttan yukarı: satır silinince üsttekiler kaymaz
+      if (idler[i][0]) durumaGoreTasi_(ad, bas + i, String(durumlar[i][0] || ''), kim);
+    }
     ozetGuncelleGuvenli_();
   } catch (err) { /* elle düzenlemeyi engellemesin */ }
+}
+
+function kimAdi_() {
+  var eposta = String(Session.getActiveUser().getEmail() || '').toLowerCase();
+  var p = personel_().filter(function (x) { return x.eposta === eposta; })[0];
+  return p ? p.ad : eposta;
+}
+
+/** Menü: Görevler'de seçili satırları "Tamamlandı" yap ve Tamamlananlar'a taşı */
+function seciliSatirlariTamamla() {
+  var ss = SpreadsheetApp.getActive(), sh = ss.getActiveSheet(), ui = SpreadsheetApp.getUi();
+  if (sh.getName() !== SAYFA.GOREV) { ui.alert('Önce Görevler sekmesinde tamamlanacak satırları seçin.'); return; }
+  var satirlar = {};
+  var secim = sh.getActiveRangeList() ? sh.getActiveRangeList().getRanges() : [sh.getActiveRange()];
+  secim.forEach(function (r) { for (var i = Math.max(2, r.getRow()); i <= r.getLastRow(); i++) satirlar[i] = true; });
+  var liste = Object.keys(satirlar).map(Number).filter(function (i) { return sh.getRange(i, sutun_('ID')).getValue(); });
+  if (!liste.length) { ui.alert('Seçili satırlarda görev yok.'); return; }
+  if (ui.alert(liste.length + ' görev Tamamlandı yapılıp Tamamlananlar sekmesine taşınsın mı?', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
+  try {
+    var kim = kimAdi_();
+    liste.sort(function (a, b) { return b - a; }).forEach(function (i) {
+      sh.getRange(i, sutun_('Durum')).setValue('Tamamlandı');
+      durumaGoreTasi_(SAYFA.GOREV, i, 'Tamamlandı', kim);
+    });
+    ozetGuncelleGuvenli_();
+  } finally { kilit.releaseLock(); }
+}
+
+/** Panel: seçilen görevleri topluca tamamla */
+function topluTamamla(idler) {
+  var ben = yetkiKontrol_();
+  var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
+  try {
+    var sec = {}; (idler || []).forEach(function (x) { sec[x] = true; });
+    var ss = SpreadsheetApp.getActive();
+    gorevler_().filter(function (g) { return sec[g.ID] && g._sayfa === SAYFA.GOREV; })
+      .sort(function (a, b) { return b._satir - a._satir; })
+      .forEach(function (g) {
+        ss.getSheetByName(SAYFA.GOREV).getRange(g._satir, sutun_('Durum')).setValue('Tamamlandı');
+        durumaGoreTasi_(SAYFA.GOREV, g._satir, 'Tamamlandı', ben.ad);
+      });
+    ozetGuncelleGuvenli_();
+  } finally { kilit.releaseLock(); }
+  return panelVerisi();
 }
 
 function tarihYazi_(d) {
