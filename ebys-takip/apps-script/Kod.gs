@@ -706,8 +706,15 @@ function bildir_(kisiAdi, id, konu, metin, personel) {
 function doGet() {
   var ben = kim_();
   if (!ben) {
-    return HtmlService.createHtmlOutput('<p style="font-family:sans-serif;padding:24px">Bu panele yalnızca ' +
-      'Personel listesindeki kurumsal hesaplar girebilir. Kurumsal Google hesabınızla oturum açın.</p>');
+    var eposta = String(Session.getActiveUser().getEmail() || '');
+    var sahip = String(Session.getEffectiveUser().getEmail() || '');
+    var neden = eposta
+      ? 'Algılanan hesap: <b>' + eposta + '</b><br>Bu adres Personel sekmesinde yok. Personel sekmesindeki E-posta sütununa ' +
+        'bu adresi <b>birebir</b> yazın, sonra bu sayfayı yenileyin.'
+      : 'Google, giriş yapan hesabın adresini panele iletmedi.<br>Panelin sahibi: <b>' + sahip + '</b><br>' +
+        'Sahip kişisel bir hesapsa (gmail.com) ya da sizinle aynı kurumda değilse bu olur. Çözüm için KURULUM.md → "Panel açılmıyor" bölümüne bakın.';
+    return HtmlService.createHtmlOutput('<div style="font-family:sans-serif;padding:24px;line-height:1.6;max-width:640px">' +
+      '<h3 style="margin-top:0">Panele giriş yapılamadı</h3>' + neden + '</div>').setTitle('Görev Takip');
   }
   return HtmlService.createTemplateFromFile('Panel').evaluate()
     .setTitle('Kalite Koordinatörlüğü — Görev Takip')

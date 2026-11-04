@@ -185,4 +185,15 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
 | Notta adı geçen kişi bulunamadı | Personel sayfasındaki "Notta geçen adlar" sütununa o yazılışı ekleyin. Görevi panelden elle atayın. |
 | Evrak tablosuna satır gelmiyor | **Aktarım Kaydı** sekmesindeki "Not" sütununa bakın, hata orada yazar. Menüden sütun eşleşmesini kontrol edin. Kurulumu yapan hesabın evrak tablosunda düzenleme yetkisi olmalı. |
 | Bir evrakı bilerek yeniden yazdırmak istiyorum | O evrakın satırını **Aktarım Kaydı** sekmesinden silin. Evrak tablonuzda hâlâ varsa yine yazılmaz. |
-| Panel "yetkiniz yok" diyor | Kişinin e-postası Personel sayfasında birebir aynı mı kontrol edin. |
+| Panel "Panele giriş yapılamadı" diyor | Sayfada **algılanan hesap** yazıyorsa o adresi Personel sekmesine birebir yazın. "Adres iletilmedi" yazıyorsa aşağıdaki "Panel açılmıyor" bölümüne bakın. |
+
+## Panel açılmıyor
+
+- **"Dosyayı açamıyoruz" hatası:** Tarayıcıda birden çok Google hesabı açıktır. Adresi
+  `https://script.google.com/a/macros/usak.edu.tr/s/…/exec` biçiminde kullanın ya da gizli pencerede
+  yalnızca kurumsal hesapla girin.
+- **"Adres iletilmedi" uyarısı:** Panelin sahibi kurumsal bir hesap değildir. Tabloyu ve kodu kurumsal
+  hesapla yeniden oluşturun. Hızlı çözüm olarak Panel dağıtımında **Şu kullanıcı olarak yürüt** ayarını
+  **"Web uygulamasına erişen kullanıcı"** yapın; o zaman paneli kullanacak herkesin takip tablosunda
+  düzenleme yetkisi olmalı ve ilk girişte Google'ın izin ekranını onaylaması gerekir. "Betik"
+  dağıtımı "Ben" olarak kalmalı.
