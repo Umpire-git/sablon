@@ -21,11 +21,13 @@ var GENEL = 'Genel';
 // ---------------------------------------------------------------- kurulum
 
 function onOpen() {
+  ozetGuncelleGuvenli_();
   SpreadsheetApp.getUi().createMenu('EBYS Takip')
     .addItem('Kurulum / onarım', 'kurulum')
     .addItem('Gizli anahtarı göster', 'anahtariGoster')
     .addItem('Evrak tablosu sütun eşleşmesini göster', 'eslesmeyiGoster')
     .addItem('Görünümü düzenle (renkler, gizli sütunlar, özet)', 'gorunumuDuzenle')
+    .addItem('Özeti yenile', 'ozetGuncelle_')
     .addToUi();
 }
 
@@ -123,8 +125,8 @@ function gorevSayfasiBicimle_(g, renk) {
       .setBackground('#eef7f0').setFontColor('#7a8a80').setRanges([tumu]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="İptal"')
       .setFontColor('#a0a0a0').setStrikethrough(true).setRanges([tumu]).build(),
-    SpreadsheetApp.newConditionalFormatRule()
-      .whenFormulaSatisfied('=AND(' + K + '<>"Tamamlandı",' + K + '<>"İptal",' + L + '<>"",' + L + '<TODAY())')
+    SpreadsheetApp.newConditionalFormatRule()   // virgül kullanılmaz: Türkçe dil ayarında da çalışsın
+      .whenFormulaSatisfied('=(' + K + '<>"Tamamlandı")*(' + K + '<>"İptal")*(' + L + '<>"")*(' + L + '<TODAY())')
       .setBackground('#fdecea').setFontColor('#9b1c1c').setRanges([tumu]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="Devam Ediyor"')
       .setBackground('#fff6dd').setRanges([g.getRange(2, sutun_('Durum'), son - 1, 1)]).build(),
@@ -159,74 +161,89 @@ function digerSayfalar_(ss) {
   ss.setActiveSheet(ss.getSheetByName('Özet'));
 }
 
-/** Özet: sayılar, kişi tablosu ve açık işler; formüllerle canlı güncellenir */
+/** Özet sayfasının iskeleti. Sayıları ozetGuncelle_ yazar (formül yok: dil ayarından etkilenmez). */
 function ozetSayfasi_(ss) {
   var o = ss.getSheetByName('Özet') || ss.insertSheet('Özet');
   o.getRange(1, 1, o.getMaxRows(), o.getMaxColumns()).breakApart();
   o.clear(); o.clearConditionalFormatRules();
   o.setHiddenGridlines(true);
-  var G = "'" + SAYFA.GOREV + "'!";
-  var A = G + harf_('ID') + '2:' + harf_('ID'), D = G + harf_('Durum') + '2:' + harf_('Durum');
-  var S = G + harf_('Sorumlu') + '2:' + harf_('Sorumlu'), T = G + harf_('Son Tarih') + '2:' + harf_('Son Tarih');
-  var Z = "'" + SAYFA.ARSIV + "'!";
-  var B = Z + harf_('Tamamlanma') + '2:' + harf_('Tamamlanma');
-  var DZ = Z + harf_('Durum') + '2:' + harf_('Durum'), SZ = Z + harf_('Sorumlu') + '2:' + harf_('Sorumlu');
-  var acik = 'COUNTIFS(' + A + ',"<>",' + D + ',"<>Tamamlandı",' + D + ',"<>İptal"';
 
   o.getRange('A1').setValue('Kalite Koordinatörlüğü · Görev Takip').setFontSize(18).setFontWeight('bold').setFontColor('#1f4e8c');
   var url = ScriptApp.getService().getUrl();
   o.getRange('A2').setValue(url ? 'Günlük kullanım için paneli açın: ' + url : 'Panel adresi: Dağıt → Dağıtımları yönet → Panel')
     .setFontColor('#6b7488');
 
-  var kartlar = [
-    ['Açık görev', '=' + acik + ')', '#1f4e8c'],
-    ['Geciken', '=' + acik + ',' + T + ',"<"&TODAY(),' + T + ',"<>")', '#c0392b'],
-    ['Atanmamış', '=' + acik + ',' + S + ',"' + GENEL + '")', '#b7791f'],
-    ['Bu ay tamamlanan', '=COUNTIFS(' + DZ + ',"Tamamlandı",' + B + ',">="&EOMONTH(TODAY(),-1)+1)', '#2e7d4f']
-  ];
-  // Kart yerleri: A | B-D | F | G-J (E boşluk sütunu)
-  var yer = [[1, 1], [2, 3], [6, 1], [7, 4]];
-  kartlar.forEach(function (k, i) {
-    var c = yer[i][0], n = yer[i][1];
+  // Kartlar: A | B-D | F | G-J (E boşluk sütunu)
+  var kartlar = [['Açık görev', '#1f4e8c'], ['Geciken', '#c0392b'], ['Atanmamış', '#b7791f'], ['Bu ay tamamlanan', '#2e7d4f']];
+  OZET_KART.forEach(function (y, i) {
+    var c = y[0], n = y[1];
     var ust = o.getRange(4, c, 1, n), alt = o.getRange(5, c, 1, n);
     if (n > 1) { ust.merge(); alt.merge(); }
-    ust.setValue(k[0]).setFontColor('#6b7488').setFontSize(10);
-    alt.setFormula(k[1]).setFontSize(26).setFontWeight('bold').setFontColor(k[2]).setHorizontalAlignment('left');
+    ust.setValue(kartlar[i][0]).setFontColor('#6b7488').setFontSize(10);
+    alt.setFontSize(26).setFontWeight('bold').setFontColor(kartlar[i][1]).setHorizontalAlignment('left');
     o.getRange(4, c, 2, n).setBackground('#f3f6fb').setBorder(true, true, true, true, false, false, '#d6dde8', SpreadsheetApp.BorderStyle.SOLID);
   });
   o.setRowHeight(5, 46);
 
-  // Kişi tablosu
-  o.getRange('A7:D7').setValues([['Kişi', 'Açık', 'Geciken', 'Bu ay biten']]);
-  o.getRange('A8').setFormula("={\"" + GENEL + "\";FILTER('" + SAYFA.PERSONEL + "'!A2:A,'" + SAYFA.PERSONEL + "'!A2:A<>\"\")}");
-  for (var r = 8; r <= 22; r++) {
-    var k = '$A' + r;
-    o.getRange(r, 2).setFormula('=IF(' + k + '="","",' + acik + ',' + S + ',' + k + '))');
-    o.getRange(r, 3).setFormula('=IF(' + k + '="","",' + acik + ',' + S + ',' + k + ',' + T + ',"<"&TODAY(),' + T + ',"<>"))');
-    o.getRange(r, 4).setFormula('=IF(' + k + '="","",COUNTIFS(' + SZ + ',' + k + ',' + DZ + ',"Tamamlandı",' + B + ',">="&EOMONTH(TODAY(),-1)+1))');
-  }
-  o.getRange('A7:D7').setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
-  o.getRange('B7:D22').setHorizontalAlignment('center');
+  o.getRange('A7:D7').setValues([['Kişi', 'Açık', 'Geciken', 'Bu ay biten']])
+    .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
+  o.getRange('B7:D40').setHorizontalAlignment('center');
+  o.getRange('F7:J7').setValues([['Açık işler (son tarihe göre)', 'Sorumlu', 'Durum', 'Son tarih', 'Evrak']])
+    .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
+  o.getRange('I8:I40').setNumberFormat('dd.mm.yyyy');
+  o.getRange('F8:J40').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setFontSize(10);
   o.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor('#c0392b').setBold(true)
-      .setRanges([o.getRange('C8:C22')]).build()
+      .setRanges([o.getRange('C8:C40')]).build()
   ]);
-
-  // Açık işler listesi (son tarihe göre)
-  var c = function (b) { return 'Col' + sutun_(b); };
-  o.getRange('F7:J7').setValues([['Açık işler', 'Sorumlu', 'Durum', 'Son tarih', 'Evrak']])
-    .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
-  o.getRange('F8').setFormula('=IFERROR(QUERY({' + G + 'A2:' + sutunHarfi_(GOREV_SUTUN.length) + '},"select ' +
-    c('Görev') + ', ' + c('Sorumlu') + ', ' + c('Durum') + ', ' + c('Son Tarih') + ', ' + c('Evrak No') +
-    " where " + c('ID') + " is not null and " + c('Durum') + " <> 'Tamamlandı' and " + c('Durum') +
-    " <> 'İptal' order by " + c('Son Tarih') + " asc limit 25\",0),\"Açık iş yok\")");
-  o.getRange('I8:I32').setNumberFormat('dd.mm.yyyy');
-  o.getRange('F8:J32').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setFontSize(10);
-
   [150, 70, 70, 85, 24, 320, 130, 105, 90, 80].forEach(function (w, i) { o.setColumnWidth(i + 1, w); });
-  o.getRange('A1:H2').setWrapStrategy(SpreadsheetApp.WrapStrategy.OVERFLOW);
+  o.getRange('A1:H3').setWrapStrategy(SpreadsheetApp.WrapStrategy.OVERFLOW);
   o.setTabColor('#c0392b');
+  ozetGuncelle_();
 }
+
+var OZET_KART = [[1, 1], [2, 3], [6, 1], [7, 4]];
+
+/** Özet sayılarını hesaplayıp yazar. Görev eklenince, değişince ve tablo açılınca çağrılır. */
+function ozetGuncelle_() {
+  var o = SpreadsheetApp.getActive().getSheetByName('Özet');
+  if (!o) return;
+  var hepsi = gorevler_();
+  var bugun = new Date(); bugun.setHours(0, 0, 0, 0);
+  var ayBas = new Date(bugun.getFullYear(), bugun.getMonth(), 1);
+  var acikMi = function (g) { return g._sayfa === SAYFA.GOREV && BITMIS.indexOf(String(g.Durum)) < 0; };
+  var gecikti = function (g) { return acikMi(g) && g['Son Tarih'] instanceof Date && g['Son Tarih'] < bugun; };
+  var buAy = function (g) { return g.Durum === 'Tamamlandı' && g.Tamamlanma instanceof Date && g.Tamamlanma >= ayBas; };
+  var acik = hepsi.filter(acikMi);
+
+  var sayilar = [acik.length, hepsi.filter(gecikti).length,
+    acik.filter(function (g) { return g.Sorumlu === GENEL; }).length, hepsi.filter(buAy).length];
+  OZET_KART.forEach(function (y, i) { o.getRange(5, y[0]).setValue(sayilar[i]); });
+
+  var kisiler = [GENEL].concat(personel_().map(function (p) { return p.ad; }));
+  o.getRange('A8:D40').clearContent();
+  var satirlar = kisiler.slice(0, 33).map(function (k) {
+    var benim = hepsi.filter(function (g) { return g.Sorumlu === k; });
+    return [k, benim.filter(acikMi).length, benim.filter(gecikti).length, benim.filter(buAy).length];
+  });
+  if (satirlar.length) o.getRange(8, 1, satirlar.length, 4).setValues(satirlar);
+
+  o.getRange('F8:J40').clearContent();
+  var liste = acik.slice().sort(function (a, b) {
+    var ta = a['Son Tarih'] instanceof Date ? a['Son Tarih'].getTime() : Infinity;
+    var tb = b['Son Tarih'] instanceof Date ? b['Son Tarih'].getTime() : Infinity;
+    return ta - tb;
+  }).slice(0, 33).map(function (g) {
+    return [g['Görev'] || g.Konu, g.Sorumlu, g.Durum, g['Son Tarih'] || '', g['Evrak No']];
+  });
+  if (liste.length) o.getRange(8, 6, liste.length, 5).setValues(liste);
+  else o.getRange('F8').setValue('Açık iş yok');
+
+  o.getRange('A3').setValue('Son güncelleme: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm'))
+    .setFontColor('#9aa5b8').setFontSize(9);
+}
+
+function ozetGuncelleGuvenli_() { try { ozetGuncelle_(); } catch (e) { /* özet yenilenemese de iş devam etsin */ } }
 
 function anahtariGoster() {
   SpreadsheetApp.getUi().alert('Gizli anahtar:\n\n' + ayar_('GIZLI_ANAHTAR'));
@@ -360,11 +377,12 @@ function onEdit(e) {
   try {
     var sh = e.range.getSheet(), ad = sh.getName();
     if ((ad !== SAYFA.GOREV && ad !== SAYFA.ARSIV) || e.range.getRow() < 2) return;
-    if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1 || e.range.getColumn() !== sutun_('Durum')) return;
-    if (!sh.getRange(e.range.getRow(), 1).getValue()) return;
+    if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1 || e.range.getColumn() !== sutun_('Durum') ||
+        !sh.getRange(e.range.getRow(), 1).getValue()) { ozetGuncelleGuvenli_(); return; }
     var eposta = String(Session.getActiveUser().getEmail() || '').toLowerCase();
     var p = personel_().filter(function (x) { return x.eposta === eposta; })[0];
     durumaGoreTasi_(ad, e.range.getRow(), String(e.value || ''), p ? p.ad : eposta);
+    ozetGuncelleGuvenli_();
   } catch (err) { /* elle düzenlemeyi engellemesin */ }
 }
 
@@ -489,6 +507,7 @@ function gorevleriAl_(liste, kullanici) {
     });
     if (it.evrakNo && !dosyaVar && !kayitBul_(it.evrakNo).dosya) dosyaIstenen.push(it.evrakNo);
   });
+  if (eklenen) ozetGuncelleGuvenli_();
   return { tamam: true, eklenen: eklenen, dosyaIstenen: dosyaIstenen };
 }
 
@@ -616,6 +635,7 @@ function gorevGuncelle(id, alanlar) {
       bildir_(alanlar.Sorumlu, id, g.Konu, alanlar['Görev'] || g['Görev']);
     }
     if (alanlar.Durum && alanlar.Durum !== g.Durum) durumaGoreTasi_(g._sayfa, g._satir, alanlar.Durum, ben.ad);
+    ozetGuncelleGuvenli_();
   } finally { kilit.releaseLock(); }
   return panelVerisi();
 }
@@ -632,6 +652,7 @@ function gorevEkle(o) {
       'Açıklama': o['Açıklama'] || '', 'Ekleyen': ben.ad
     });
     if (o.Sorumlu && o.Sorumlu !== GENEL) bildir_(o.Sorumlu, id, o.Konu, o['Görev']);
+    ozetGuncelleGuvenli_();
   } finally { kilit.releaseLock(); }
   return panelVerisi();
 }
