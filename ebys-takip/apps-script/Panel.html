@@ -25,7 +25,9 @@
   .filtre input, .filtre select { padding:7px 9px; border:1px solid var(--kenar); border-radius:6px; font:inherit; background:#fff; }
   .filtre input[type=search] { flex:1; min-width:180px; }
   .kart { background:#fff; border:1px solid var(--kenar); border-left:4px solid var(--mavi); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
-  .kart.gecikti { border-left-color:var(--kirmizi); }
+  .kart.yeni { border-left-color:var(--kirmizi); }
+  .not { margin:6px 0; white-space:pre-wrap; }
+  .not small { color:var(--soluk); }
   .kart.bitti { border-left-color:var(--yesil); opacity:.75; }
   .kart.genel { border-left-color:var(--sari); }
   .ust { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:baseline; }
@@ -77,7 +79,7 @@ function hata(e) { bildir('Hata: ' + (e && e.message || e), 6000); }
 function esc(s) { return String(s || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 function bugun() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
 function acik(g) { return g.Durum !== 'Tamamlandı' && g.Durum !== 'İptal'; }
-function gecikti(g) { return acik(g) && g['Son Tarih'] && g['Son Tarih'] < bugun(); }
+function bugunGelen(g) { return acik(g) && String(g.Eklenme).slice(0, 10) === bugun(); }
 
 function yukle() {
   google.script.run.withSuccessHandler(function (v) { V = v; ciz(); }).withFailureHandler(hata).panelVerisi();
@@ -98,7 +100,7 @@ function kartlar() {
   var ay = bugun().slice(0, 7);
   var k = [
     ['Açık görev', V.gorevler.filter(acik).length, 'var(--mavi)', "sekme='tum';F.durum='acik';F.kisi=''"],
-    ['Geciken', V.gorevler.filter(gecikti).length, 'var(--kirmizi)', "sekme='tum';F.durum='gecikti';F.kisi=''"],
+    ['Bugün gelen', V.gorevler.filter(bugunGelen).length, 'var(--kirmizi)', "sekme='tum';F.durum='bugun';F.kisi=''"],
     ['Atanmamış', V.gorevler.filter(function (g) { return acik(g) && g.Sorumlu === 'Genel'; }).length, 'var(--sari)', "sekme='genel';F.durum='acik'"],
     ['Bu ay tamamlanan', V.gorevler.filter(function (g) { return g.Durum === 'Tamamlandı' && String(g.Tamamlanma).slice(0, 7) === ay; }).length, 'var(--yesil)', "sekme='tum';F.durum='bitti';F.kisi=''"]
   ];
@@ -125,7 +127,7 @@ function filtreHtml() {
   return '<div class="filtre"><input type="search" placeholder="Ara: konu, evrak no, not…" value="' + esc(F.ara) +
     '" oninput="F.ara=this.value;listeCiz()">' +
     '<select onchange="F.durum=this.value;listeCiz()">' +
-    [['acik', 'Açık olanlar'], ['gecikti', 'Gecikenler'], ['bitti', 'Tamamlananlar'], ['hepsi', 'Hepsi']].map(function (x) {
+    [['acik', 'Açık olanlar'], ['bugun', 'Bugün gelenler'], ['bitti', 'Tamamlananlar'], ['hepsi', 'Hepsi']].map(function (x) {
       return '<option value="' + x[0] + '" ' + (F.durum === x[0] ? 'selected' : '') + '>' + x[1] + '</option>';
     }).join('') + '</select>' + kisi + '</div>';
 }
@@ -136,43 +138,41 @@ function listeCiz() {
     if (sekme === 'genel' && g.Sorumlu !== 'Genel') return false;
     if (sekme === 'tum' && F.kisi && g.Sorumlu !== F.kisi) return false;
     if (F.durum === 'acik' && !acik(g)) return false;
-    if (F.durum === 'gecikti' && !gecikti(g)) return false;
+    if (F.durum === 'bugun' && !bugunGelen(g)) return false;
     if (F.durum === 'bitti' && g.Durum !== 'Tamamlandı') return false;
     if (F.ara) {
       var a = F.ara.toLocaleLowerCase('tr');
-      var t = [g.Konu, g['Evrak No'], g['Görev'], g['Hocanın Notu'], g['Açıklama'], g.Sorumlu].join(' ').toLocaleLowerCase('tr');
+      var t = [g.Konu, g['Evrak No'], g['Hocanın Notu'], g['Görev'], g['Açıklama'], g.Sorumlu, g['Evrak Tarihi']].join(' ').toLocaleLowerCase('tr');
       if (t.indexOf(a) < 0) return false;
     }
     return true;
   });
   l.sort(function (a, b) {
     if (acik(a) !== acik(b)) return acik(a) ? -1 : 1;
-    var sa = a['Son Tarih'] || '9999', sb = b['Son Tarih'] || '9999';
-    if (sa !== sb) return sa < sb ? -1 : 1;
     return String(b['Eklenme']).localeCompare(String(a['Eklenme']));
   });
   document.getElementById('liste').innerHTML = l.length ? l.map(kart).join('') : '<div class="bos">Gösterilecek görev yok.</div>';
 }
 
 function kart(g) {
-  var sinif = g.Durum === 'Tamamlandı' ? 'bitti' : gecikti(g) ? 'gecikti' : g.Sorumlu === 'Genel' ? 'genel' : '';
+  var sinif = g.Durum === 'Tamamlandı' ? 'bitti' : bugunGelen(g) ? 'yeni' : g.Sorumlu === 'Genel' ? 'genel' : '';
   var id = esc(g.ID);
   var kisiSec = '<select onchange="guncelle(\'' + id + '\',{Sorumlu:this.value})">' + ['Genel'].concat(V.personel).map(function (p) {
     return '<option ' + (g.Sorumlu === p ? 'selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>';
   var durumSec = '<select onchange="guncelle(\'' + id + '\',{Durum:this.value})">' + V.durumlar.map(function (d) {
     return '<option ' + (g.Durum === d ? 'selected' : '') + '>' + d + '</option>'; }).join('') + '</select>';
-  var not = g['Hocanın Notu'] && g['Hocanın Notu'] !== g['Görev'] ?
-    '<details><summary>Hocanın notu' + (g['Not Yazan'] ? ' · ' + esc(g['Not Yazan']) + ' ' + esc(g['Not Tarihi']) : '') + '</summary><p>' + esc(g['Hocanın Notu']) + '</p></details>' : '';
+  var notMetni = g['Hocanın Notu'] || (g.Konu && gorevMetni(g) !== g.Konu ? gorevMetni(g) : '');
+  var not = notMetni ? '<div class="not">' + esc(notMetni) +
+    (g['Not Yazan'] ? ' <small>— ' + esc(g['Not Yazan']) + ' ' + esc(g['Not Tarihi']) + '</small>' : '') + '</div>' : '';
   var tamam = g.Durum === 'Tamamlandı' ? '<span class="etiket">✓ ' + esc(g.Tamamlayan) + ' · ' + esc(g.Tamamlanma) + '</span>' :
     '<button class="btn yesil" onclick="guncelle(\'' + id + '\',{Durum:\'Tamamlandı\'})">Tamamlandı</button>';
   return '<div class="kart ' + sinif + '">' +
-    '<div class="ust"><span class="konu">' + esc(g.Konu || g['Görev']) + '</span>' +
+    '<div class="ust"><span class="konu">' + esc(g.Konu || gorevMetni(g)) + '</span>' +
     (g['Evrak No'] ? '<span class="rozet">Evrak ' + esc(g['Evrak No']) + '</span>' : '<span class="rozet">' + esc(g.Kaynak) + '</span>') +
-    (gecikti(g) ? '<span class="rozet k">Gecikti</span>' : '') +
-    '<span class="etiket">' + esc(g['Gönderen'] || g.Ekleyen) + ' · ' + esc(g.Eklenme) + '</span></div>' +
-    (g.Konu ? '<div class="gorev">' + esc(gorevMetni(g)) + '</div>' : '') + not +
+    (g['Evrak Tarihi'] ? '<span class="etiket">Evrak tarihi: ' + esc(g['Evrak Tarihi']) + '</span>' : '') +
+    (bugunGelen(g) ? '<span class="rozet k">Bugün geldi</span>' : '') + '</div>' +
+    not +
     '<div class="alt">' + kisiSec + durumSec +
-    '<input type="date" value="' + esc(g['Son Tarih']) + '" title="Son tarih" onchange="guncelle(\'' + id + '\',{\'Son Tarih\':this.value})">' +
     '<input class="aciklama" placeholder="Açıklama / ne yapıldı" value="' + esc(g['Açıklama']) + '" onchange="guncelle(\'' + id + '\',{\'Açıklama\':this.value})">' +
     (g.Dosya ? '<a href="' + esc(g.Dosya) + '" target="_blank">PDF</a>' : '') +
     (g['EBYS Linki'] ? '<a href="' + esc(g['EBYS Linki']) + '" target="_blank">EBYS</a>' : '') +
@@ -195,18 +195,18 @@ function ozet() {
   var satir = ['Genel'].concat(V.personel).map(function (p) {
     var g = V.gorevler.filter(function (x) { return x.Sorumlu === p; });
     return '<tr><td>' + esc(p) + '</td><td class="n">' + g.filter(acik).length + '</td><td class="n">' +
-      g.filter(gecikti).length + '</td><td class="n">' +
+      g.filter(bugunGelen).length + '</td><td class="n">' +
       g.filter(function (x) { return x.Durum === 'Tamamlandı' && String(x.Tamamlanma).slice(0, 7) === ay; }).length + '</td></tr>';
   }).join('');
-  return '<table><tr><th>Kişi</th><th>Açık</th><th>Geciken</th><th>Bu ay tamamlanan</th></tr>' + satir + '</table>';
+  return '<table><tr><th>Kişi</th><th>Açık</th><th>Bugün gelen</th><th>Bu ay tamamlanan</th></tr>' + satir + '</table>';
 }
 
 function yeniForm() {
   return '<form class="yeni" onsubmit="return ekle(this)">' +
-    '<label>Görev *<textarea name="g" rows="3" required></textarea></label>' +
-    '<label>Konu / başlık<input name="k"></label>' +
+    '<label>Konu *<input name="k" required></label>' +
+    '<label>Not / yapılacak iş<textarea name="n" rows="3"></textarea></label>' +
     '<label>Sorumlu<select name="s">' + ['Genel'].concat(V.personel).map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select></label>' +
-    '<label>Son tarih<input type="date" name="t"></label>' +
+    '<label>Evrak tarihi<input type="date" name="t"></label>' +
     '<label>Açıklama<input name="a"></label>' +
     '<div><button class="btn" type="submit">Görevi ekle</button></div></form>';
 }
@@ -214,7 +214,7 @@ function yeniForm() {
 function ekle(f) {
   bildir('Ekleniyor…');
   google.script.run.withSuccessHandler(function (v) { V = v; sekme = 'tum'; F.durum = 'acik'; ciz(); bildir('Görev eklendi'); })
-    .withFailureHandler(hata).gorevEkle({ 'Görev': f.g.value, Konu: f.k.value, Sorumlu: f.s.value, 'Son Tarih': f.t.value, 'Açıklama': f.a.value });
+    .withFailureHandler(hata).gorevEkle({ Konu: f.k.value, Not: f.n.value, Sorumlu: f.s.value, 'Evrak Tarihi': f.t.value, 'Açıklama': f.a.value });
   return false;
 }
 

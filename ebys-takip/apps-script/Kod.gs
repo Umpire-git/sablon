@@ -10,10 +10,14 @@ var BITMIS = ['Tamamlandı', 'İptal'];
 var KAYIT_SUTUN = ['Evrak No', 'Tür', 'Konu', 'Tabloya yazıldı', 'Tablo satırı', 'Drive dosyası', 'Tarih', 'Not'];
 
 var GOREV_SUTUN = [
-  'ID', 'Kaynak', 'Evrak No', 'Konu', 'Gönderen', 'Not Yazan', 'Not Tarihi', 'Hocanın Notu',
-  'Görev', 'Sorumlu', 'Durum', 'Son Tarih', 'Ekleyen', 'Eklenme', 'Tamamlanma', 'Tamamlayan',
-  'Dosya', 'EBYS Linki', 'Açıklama', 'Anahtar'
+  // görünen sütunlar
+  'Evrak No', 'Evrak Tarihi', 'Konu', 'Hocanın Notu', 'Sorumlu', 'Durum', 'Açıklama', 'Dosya', 'Eklenme',
+  // gizli (sistemin kullandığı) sütunlar
+  'ID', 'Kaynak', 'Gönderen', 'Not Yazan', 'Not Tarihi', 'Görev', 'Son Tarih', 'Ekleyen',
+  'Tamamlanma', 'Tamamlayan', 'EBYS Linki', 'Anahtar'
 ];
+var GORUNUR = { 'Evrak No': 80, 'Evrak Tarihi': 90, 'Konu': 260, 'Hocanın Notu': 380, 'Sorumlu': 130,
+                'Durum': 110, 'Açıklama': 220, 'Dosya': 70, 'Eklenme': 105 };
 var PERSONEL_SUTUN = ['Ad Soyad', 'E-posta', 'Notta geçen adlar (virgülle)', 'Rol (Yönetici/Personel)'];
 var DURUMLAR = ['Bekliyor', 'Devam Ediyor', 'Tamamlandı', 'İptal'];
 var GENEL = 'Genel';
@@ -33,8 +37,8 @@ function onOpen() {
 
 function kurulum() {
   var ss = SpreadsheetApp.getActive();
-  sayfaHazirla_(ss, SAYFA.GOREV, GOREV_SUTUN);
-  sayfaHazirla_(ss, SAYFA.ARSIV, GOREV_SUTUN);
+  gorevSayfasi_(SAYFA.GOREV);
+  gorevSayfasi_(SAYFA.ARSIV);
   var p = sayfaHazirla_(ss, SAYFA.PERSONEL, PERSONEL_SUTUN);
   if (p.getLastRow() < 2) {
     p.getRange(2, 1, 1, 4).setValues([[
@@ -58,11 +62,9 @@ function kurulum() {
   varsayilan.forEach(function (v) { if (mevcut.indexOf(v[0]) < 0) a.appendRow(v); });
 
   sayfaHazirla_(ss, SAYFA.KAYIT, KAYIT_SUTUN);
-  var g = ss.getSheetByName(SAYFA.GOREV);
-  var durumKurali = SpreadsheetApp.newDataValidation().requireValueInList(DURUMLAR, true).build();
-  g.getRange(2, sutun_('Durum'), g.getMaxRows() - 1, 1).setDataValidation(durumKurali);
   bitmisleriTasi_();
   konulariEkle_();
+  try { evrakTarihleriniDoldur_(); } catch (e) { /* evrak tablosuna erişilemezse geç */ }
   gorunumuDuzenle_();
   SpreadsheetApp.getUi().alert('Kurulum tamam. Şimdi Personel sayfasını doldurun, sonra Dağıt → Yeni dağıtım ile web uygulaması oluşturun.');
 }
@@ -78,9 +80,8 @@ function harf_(ad) { return sutunHarfi_(sutun_(ad)); }
 
 function gorunumuDuzenle_() {
   var ss = SpreadsheetApp.getActive();
-  if (!ss.getSheetByName(SAYFA.ARSIV)) sayfaHazirla_(ss, SAYFA.ARSIV, GOREV_SUTUN);
-  gorevSayfasiBicimle_(ss.getSheetByName(SAYFA.GOREV), '#1f4e8c');
-  gorevSayfasiBicimle_(ss.getSheetByName(SAYFA.ARSIV), '#2e7d4f');
+  gorevSayfasiBicimle_(gorevSayfasi_(SAYFA.GOREV), '#1f4e8c');
+  gorevSayfasiBicimle_(gorevSayfasi_(SAYFA.ARSIV), '#2e7d4f');
   digerSayfalar_(ss);
 }
 
@@ -99,15 +100,13 @@ function gorevSayfasiBicimle_(g, renk) {
   g.setRowHeightsForced(2, son - 1, 24);
 
   // Sadece gerekli sütunlar görünür
-  var gorunur = { 'Evrak No': 80, 'Konu': 250, 'Görev': 300, 'Sorumlu': 130, 'Durum': 110, 'Son Tarih': 95,
-                  'Eklenme': 105, 'Dosya': 80, 'Açıklama': 220, 'Hocanın Notu': 200 };
   GOREV_SUTUN.forEach(function (b, i) {
-    if (gorunur[b]) { g.showColumns(i + 1); g.setColumnWidth(i + 1, gorunur[b]); }
+    if (GORUNUR[b]) { g.showColumns(i + 1); g.setColumnWidth(i + 1, GORUNUR[b]); }
     else g.hideColumns(i + 1);
   });
-  g.getRange(2, sutun_('Son Tarih'), son - 1, 1).setNumberFormat('dd.mm.yyyy');
+  g.getRange(2, sutun_('Evrak Tarihi'), son - 1, 1).setNumberFormat('dd.mm.yyyy');
   g.getRange(2, sutun_('Eklenme'), son - 1, 1).setNumberFormat('dd.mm.yyyy hh:mm');
-  ['Evrak No', 'Durum', 'Son Tarih', 'Eklenme'].forEach(function (b) {
+  ['Evrak No', 'Evrak Tarihi', 'Durum', 'Eklenme', 'Dosya'].forEach(function (b) {
     g.getRange(1, sutun_(b), son, 1).setHorizontalAlignment('center');
   });
 
@@ -118,17 +117,14 @@ function gorevSayfasiBicimle_(g, renk) {
   g.getRange(2, sutun_('Sorumlu'), son - 1, 1).setDataValidation(
     SpreadsheetApp.newDataValidation().requireValueInList(kisiler, true).setAllowInvalid(true).build());
 
-  // Renkler: tamamlanan soluk yeşil, geciken kırmızı, devam eden sarı, atanmamış turuncu
-  var K = '$' + harf_('Durum') + '2', L = '$' + harf_('Son Tarih') + '2', J = '$' + harf_('Sorumlu') + '2';
+  // Renkler (virgülsüz formüller: Türkçe dil ayarında da çalışır)
+  var K = '$' + harf_('Durum') + '2', J = '$' + harf_('Sorumlu') + '2';
   var tumu = g.getRange(2, 1, son - 1, gen);
   var kurallar = [
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="Tamamlandı"')
       .setBackground('#eef7f0').setFontColor('#7a8a80').setRanges([tumu]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="İptal"')
       .setFontColor('#a0a0a0').setStrikethrough(true).setRanges([tumu]).build(),
-    SpreadsheetApp.newConditionalFormatRule()   // virgül kullanılmaz: Türkçe dil ayarında da çalışsın
-      .whenFormulaSatisfied('=(' + K + '<>"Tamamlandı")*(' + K + '<>"İptal")*(' + L + '<>"")*(' + L + '<TODAY())')
-      .setBackground('#fdecea').setFontColor('#9b1c1c').setRanges([tumu]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="Devam Ediyor"')
       .setBackground('#fff6dd').setRanges([g.getRange(2, sutun_('Durum'), son - 1, 1)]).build(),
     SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + J + '="' + GENEL + '"')
@@ -175,7 +171,7 @@ function ozetSayfasi_(ss) {
     .setFontColor('#6b7488');
 
   // Kartlar: A | B-D | F | G-J (E boşluk sütunu)
-  var kartlar = [['Açık görev', '#1f4e8c'], ['Geciken', '#c0392b'], ['Atanmamış', '#b7791f'], ['Bu ay tamamlanan', '#2e7d4f']];
+  var kartlar = [['Açık görev', '#1f4e8c'], ['Bugün gelen', '#c0392b'], ['Atanmamış', '#b7791f'], ['Bu ay tamamlanan', '#2e7d4f']];
   OZET_KART.forEach(function (y, i) {
     var c = y[0], n = y[1];
     var ust = o.getRange(4, c, 1, n), alt = o.getRange(5, c, 1, n);
@@ -186,18 +182,18 @@ function ozetSayfasi_(ss) {
   });
   o.setRowHeight(5, 46);
 
-  o.getRange('A7:D7').setValues([['Kişi', 'Açık', 'Geciken', 'Bu ay biten']])
+  o.getRange('A7:D7').setValues([['Kişi', 'Açık', 'Bugün gelen', 'Bu ay biten']])
     .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
   o.getRange('B7:D40').setHorizontalAlignment('center');
-  o.getRange('F7:K7').setValues([['Konu', 'Açık işler (son tarihe göre)', 'Sorumlu', 'Durum', 'Son tarih', 'Evrak']])
+  o.getRange('F7:K7').setValues([['Konu', 'Hocanın notu (açık işler, en yeni üstte)', 'Sorumlu', 'Durum', 'Evrak tarihi', 'Evrak no']])
     .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
   o.getRange('J8:J40').setNumberFormat('dd.mm.yyyy');
   o.getRange('F8:K40').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setFontSize(10);
   o.setConditionalFormatRules([
     SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor('#c0392b').setBold(true)
-      .setRanges([o.getRange('C8:C40')]).build()
+      .setRanges([o.getRange('C8:C40')]).build()   // bugün gelen varsa kırmızı
   ]);
-  [150, 70, 70, 85, 24, 220, 280, 125, 100, 85, 70].forEach(function (w, i) { o.setColumnWidth(i + 1, w); });
+  [150, 70, 85, 85, 24, 230, 340, 125, 100, 85, 70].forEach(function (w, i) { o.setColumnWidth(i + 1, w); });
   o.getRange('A1:H3').setWrapStrategy(SpreadsheetApp.WrapStrategy.OVERFLOW);
   o.setTabColor('#c0392b');
   ozetGuncelle_();
@@ -213,11 +209,11 @@ function ozetGuncelle_() {
   var bugun = new Date(); bugun.setHours(0, 0, 0, 0);
   var ayBas = new Date(bugun.getFullYear(), bugun.getMonth(), 1);
   var acikMi = function (g) { return g._sayfa === SAYFA.GOREV && BITMIS.indexOf(String(g.Durum)) < 0; };
-  var gecikti = function (g) { return acikMi(g) && g['Son Tarih'] instanceof Date && g['Son Tarih'] < bugun; };
+  var bugunGelen = function (g) { return acikMi(g) && g['Eklenme'] instanceof Date && g['Eklenme'] >= bugun; };
   var buAy = function (g) { return g.Durum === 'Tamamlandı' && g.Tamamlanma instanceof Date && g.Tamamlanma >= ayBas; };
   var acik = hepsi.filter(acikMi);
 
-  var sayilar = [acik.length, hepsi.filter(gecikti).length,
+  var sayilar = [acik.length, hepsi.filter(bugunGelen).length,
     acik.filter(function (g) { return g.Sorumlu === GENEL; }).length, hepsi.filter(buAy).length];
   OZET_KART.forEach(function (y, i) { o.getRange(5, y[0]).setValue(sayilar[i]); });
 
@@ -225,17 +221,17 @@ function ozetGuncelle_() {
   o.getRange('A8:D40').clearContent();
   var satirlar = kisiler.slice(0, 33).map(function (k) {
     var benim = hepsi.filter(function (g) { return g.Sorumlu === k; });
-    return [k, benim.filter(acikMi).length, benim.filter(gecikti).length, benim.filter(buAy).length];
+    return [k, benim.filter(acikMi).length, benim.filter(bugunGelen).length, benim.filter(buAy).length];
   });
   if (satirlar.length) o.getRange(8, 1, satirlar.length, 4).setValues(satirlar);
 
   o.getRange('F8:K40').clearContent();
   var liste = acik.slice().sort(function (a, b) {
-    var ta = a['Son Tarih'] instanceof Date ? a['Son Tarih'].getTime() : Infinity;
-    var tb = b['Son Tarih'] instanceof Date ? b['Son Tarih'].getTime() : Infinity;
-    return ta - tb;
+    var ta = a['Eklenme'] instanceof Date ? a['Eklenme'].getTime() : 0;
+    var tb = b['Eklenme'] instanceof Date ? b['Eklenme'].getTime() : 0;
+    return tb - ta;
   }).slice(0, 33).map(function (g) {
-    return [g.Konu || '', konusuzGorev_(g), g.Sorumlu, g.Durum, g['Son Tarih'] || '', g['Evrak No']];
+    return [g.Konu || konusuzGorev_(g), g['Hocanın Notu'] || konusuzGorev_(g), g.Sorumlu, g.Durum, g['Evrak Tarihi'] || '', g['Evrak No']];
   });
   if (liste.length) o.getRange(8, 6, liste.length, 6).setValues(liste);
   else o.getRange('F8').setValue('Açık iş yok');
@@ -248,6 +244,33 @@ function ozetGuncelleGuvenli_() { try { ozetGuncelle_(); } catch (e) { /* özet 
 
 function anahtariGoster() {
   SpreadsheetApp.getUi().alert('Gizli anahtar:\n\n' + ayar_('GIZLI_ANAHTAR'));
+}
+
+/** Görevler / Tamamlananlar sayfası; sütun sırası eskiyse önce veriyi bozmadan yeni sıraya taşır */
+function gorevSayfasi_(ad) {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(ad);
+  if (!sh) return sayfaHazirla_(ss, ad, GOREV_SUTUN);
+  onbellek_('duzen_' + ad, function () { sutunlariDuzenle_(sh); return true; });
+  return sh;
+}
+
+function sutunlariDuzenle_(sh) {
+  var v = sh.getDataRange().getValues();
+  var bas = v[0].map(function (x) { return String(x).trim(); });
+  if (GOREV_SUTUN.every(function (b, i) { return bas[i] === b; })) return;
+  if (sh.getFilter()) sh.getFilter().remove();
+  var yeni = v.map(function (r, i) {
+    if (i === 0) return GOREV_SUTUN.slice();
+    return GOREV_SUTUN.map(function (b) { var j = bas.indexOf(b); return j >= 0 ? r[j] : ''; });
+  }).filter(function (r, i) { return i === 0 || r.some(function (x) { return x !== ''; }); });
+  if (sh.getMaxColumns() < GOREV_SUTUN.length) sh.insertColumnsAfter(sh.getMaxColumns(), GOREV_SUTUN.length - sh.getMaxColumns());
+  var tum = sh.getRange(1, 1, sh.getMaxRows(), sh.getMaxColumns());
+  sh.showColumns(1, sh.getMaxColumns());
+  tum.clearDataValidations();
+  tum.clearContent();
+  sh.clearConditionalFormatRules();
+  sh.getRange(1, 1, yeni.length, GOREV_SUTUN.length).setValues(yeni);
 }
 
 function sayfaHazirla_(ss, ad, basliklar) {
@@ -312,11 +335,10 @@ function personelOku_() {
 function gorevler_() {
   var ss = SpreadsheetApp.getActive(), out = [];
   [SAYFA.GOREV, SAYFA.ARSIV].forEach(function (ad) {
-    var sh = ss.getSheetByName(ad);
-    if (!sh) return;
-    var v = sh.getDataRange().getValues();
+    var sh = gorevSayfasi_(ad);
+    var v = sh.getDataRange().getValues(), idc = sutun_('ID') - 1;
     for (var i = 1; i < v.length; i++) {
-      if (!v[i][0]) continue;
+      if (!v[i][idc]) continue;
       var o = { _satir: i + 1, _sayfa: ad };
       GOREV_SUTUN.forEach(function (b, j) { o[b] = v[i][j]; });
       out.push(o);
@@ -340,8 +362,7 @@ function ustSatiraYaz_(sh, degerler) {
 /** Görevi diğer sayfaya taşır (en üste) */
 function tasi_(sayfaAdi, satir, hedefAdi) {
   var ss = SpreadsheetApp.getActive();
-  var kaynak = ss.getSheetByName(sayfaAdi), hedef = ss.getSheetByName(hedefAdi);
-  if (!hedef) hedef = sayfaHazirla_(ss, hedefAdi, GOREV_SUTUN);
+  var kaynak = gorevSayfasi_(sayfaAdi), hedef = gorevSayfasi_(hedefAdi);
   var v = kaynak.getRange(satir, 1, 1, GOREV_SUTUN.length).getValues()[0];
   ustSatiraYaz_(hedef, v);
   kaynak.deleteRow(satir);
@@ -366,10 +387,10 @@ function durumaGoreTasi_(sayfaAdi, satir, durum, kim) {
 
 /** Kurulumda: Görevler'de kalmış biten görevleri arşive taşı */
 function bitmisleriTasi_() {
-  var sh = SpreadsheetApp.getActive().getSheetByName(SAYFA.GOREV);
+  var sh = gorevSayfasi_(SAYFA.GOREV);
   var v = sh.getDataRange().getValues();
   for (var i = v.length - 1; i >= 1; i--) {
-    if (v[i][0] && BITMIS.indexOf(String(v[i][sutun_('Durum') - 1])) >= 0) tasi_(SAYFA.GOREV, i + 1, SAYFA.ARSIV);
+    if (v[i][sutun_('ID') - 1] && BITMIS.indexOf(String(v[i][sutun_('Durum') - 1])) >= 0) tasi_(SAYFA.GOREV, i + 1, SAYFA.ARSIV);
   }
 }
 
@@ -379,7 +400,7 @@ function onEdit(e) {
     var sh = e.range.getSheet(), ad = sh.getName();
     if ((ad !== SAYFA.GOREV && ad !== SAYFA.ARSIV) || e.range.getRow() < 2) return;
     if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1 || e.range.getColumn() !== sutun_('Durum') ||
-        !sh.getRange(e.range.getRow(), 1).getValue()) { ozetGuncelleGuvenli_(); return; }
+        !sh.getRange(e.range.getRow(), sutun_('ID')).getValue()) { ozetGuncelleGuvenli_(); return; }
     var eposta = String(Session.getActiveUser().getEmail() || '').toLowerCase();
     var p = personel_().filter(function (x) { return x.eposta === eposta; })[0];
     durumaGoreTasi_(ad, e.range.getRow(), String(e.value || ''), p ? p.ad : eposta);
@@ -406,6 +427,32 @@ function konusuzGorev_(g) {
   return k && m.indexOf(k + KONU_AYRAC) === 0 ? m.slice(k.length + KONU_AYRAC.length) : m;
 }
 
+/** Kurulumda: Evrak Tarihi boş olan görevleri gelen-giden evrak tablosundan (evrak no ile) doldur */
+function evrakTarihleriniDoldur_() {
+  var bos = gorevler_().filter(function (g) { return g['Evrak No'] && !g['Evrak Tarihi']; });
+  if (!bos.length) return;
+  var tarih = {};
+  ['Gelen', 'Giden'].forEach(function (tur) {
+    try {
+      var sh = hedefSekme_(tur), e = eslesme_(sh, tur), S = e.sutunlar;
+      var tc = S.evrakTarihi || S.kayitTarihi;
+      if (!S.kayitNo || !tc || sh.getLastRow() <= e.basSatir) return;
+      var n = sh.getLastRow() - e.basSatir;
+      var nolar = sh.getRange(e.basSatir + 1, S.kayitNo, n, 1).getDisplayValues();
+      var tarihler = sh.getRange(e.basSatir + 1, tc, n, 1).getValues();
+      nolar.forEach(function (r, i) {
+        var no = String(r[0]).trim(), t = tarihler[i][0];
+        if (no && !tarih[no]) tarih[no] = t instanceof Date ? t : trTarih_(t);
+      });
+    } catch (err) { /* o sekme okunamadıysa diğerine geç */ }
+  });
+  var ss = SpreadsheetApp.getActive();
+  bos.forEach(function (g) {
+    var t = tarih[String(g['Evrak No']).trim()];
+    if (t) ss.getSheetByName(g._sayfa).getRange(g._satir, sutun_('Evrak Tarihi')).setValue(t);
+  });
+}
+
 /** Kurulumda: eski EBYS görevlerinin metnine konuyu ekle */
 function konulariEkle_() {
   var ss = SpreadsheetApp.getActive();
@@ -420,7 +467,7 @@ function yeniId_() { return 'G' + Utilities.formatDate(new Date(), 'GMT', 'yyMMd
 
 /** Kaydı Görevler sayfasına ekler, ID döner. */
 function gorevYaz_(o) {
-  var sh = SpreadsheetApp.getActive().getSheetByName(SAYFA.GOREV);
+  var sh = gorevSayfasi_(SAYFA.GOREV);
   o.ID = o.ID || yeniId_();
   o.Durum = o.Durum || 'Bekliyor';
   o['Eklenme'] = new Date();
@@ -529,6 +576,7 @@ function gorevleriAl_(liste, kullanici) {
       parcalar.forEach(function (p, i) {
         var id = gorevYaz_({
           'Kaynak': 'EBYS', 'Evrak No': it.evrakNo || '', 'Konu': konu, 'Gönderen': it.gonderen || '',
+          'Evrak Tarihi': it.evrak ? trTarih_(it.evrak.evrakTarihi || it.evrak.kayitTarihi) : '',
           'Not Yazan': n.yazan || '', 'Not Tarihi': n.tarih || '', 'Hocanın Notu': n.metin || '',
           'Görev': konuluGorev_(konu, p.metin), 'Sorumlu': p.kisi, 'Ekleyen': kullanici || 'EBYS betiği',
           'EBYS Linki': it.link || '', 'Anahtar': i === 0 ? anahtar : anahtar + '#' + i
@@ -639,7 +687,7 @@ function panelVerisi() {
       if (b === 'Anahtar') return;
       o[b] = (g[b] instanceof Date) ? tarihYazi_(g[b]) : String(g[b] === undefined ? '' : g[b]);
     });
-    if (g['Son Tarih'] instanceof Date) o['Son Tarih'] = Utilities.formatDate(g['Son Tarih'], Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    if (g['Evrak Tarihi'] instanceof Date) o['Evrak Tarihi'] = Utilities.formatDate(g['Evrak Tarihi'], Session.getScriptTimeZone(), 'dd.MM.yyyy');
     return o;
   });
   return {
@@ -650,7 +698,7 @@ function panelVerisi() {
   };
 }
 
-/** alanlar: {Durum, Sorumlu, Son Tarih, Açıklama, Görev} */
+/** alanlar: {Durum, Sorumlu, Açıklama} */
 function gorevGuncelle(id, alanlar) {
   var ben = yetkiKontrol_();
   var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
@@ -658,11 +706,10 @@ function gorevGuncelle(id, alanlar) {
     var g = gorevler_().filter(function (x) { return x.ID === id; })[0];
     if (!g) throw new Error('Görev bulunamadı: ' + id);
     var sh = SpreadsheetApp.getActive().getSheetByName(g._sayfa);
-    var izinli = ['Durum', 'Sorumlu', 'Son Tarih', 'Açıklama', 'Görev'];
+    var izinli = ['Durum', 'Sorumlu', 'Açıklama'];
     Object.keys(alanlar).forEach(function (k) {
       if (izinli.indexOf(k) < 0) return;
       var v = alanlar[k];
-      if (k === 'Son Tarih' && v) v = new Date(v + 'T00:00:00');
       sh.getRange(g._satir, sutun_(k)).setValue(v);
     });
     if (alanlar.Sorumlu && alanlar.Sorumlu !== g.Sorumlu && alanlar.Sorumlu !== GENEL) {
@@ -674,18 +721,19 @@ function gorevGuncelle(id, alanlar) {
   return panelVerisi();
 }
 
-/** o: {Görev, Konu, Sorumlu, Son Tarih, Açıklama} */
+/** o: {Konu, Not, Sorumlu, Evrak Tarihi, Açıklama} */
 function gorevEkle(o) {
   var ben = yetkiKontrol_();
-  if (!o || !String(o['Görev'] || '').trim()) throw new Error('Görev metni boş olamaz');
+  if (!o || !String(o.Konu || '').trim()) throw new Error('Konu boş olamaz');
   var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
   try {
     var id = gorevYaz_({
-      'Kaynak': 'Elle', 'Konu': o.Konu || '', 'Görev': o['Görev'], 'Sorumlu': o.Sorumlu || GENEL,
-      'Son Tarih': o['Son Tarih'] ? new Date(o['Son Tarih'] + 'T00:00:00') : '',
+      'Kaynak': 'Elle', 'Konu': o.Konu, 'Hocanın Notu': o.Not || '', 'Görev': o.Not || o.Konu,
+      'Sorumlu': o.Sorumlu || GENEL,
+      'Evrak Tarihi': o['Evrak Tarihi'] ? new Date(o['Evrak Tarihi'] + 'T00:00:00') : '',
       'Açıklama': o['Açıklama'] || '', 'Ekleyen': ben.ad
     });
-    if (o.Sorumlu && o.Sorumlu !== GENEL) bildir_(o.Sorumlu, id, o.Konu, o['Görev']);
+    if (o.Sorumlu && o.Sorumlu !== GENEL) bildir_(o.Sorumlu, id, o.Konu, o.Not || o.Konu);
     ozetGuncelleGuvenli_();
   } finally { kilit.releaseLock(); }
   return panelVerisi();

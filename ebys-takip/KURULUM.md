@@ -128,8 +128,10 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
 ### Nasıl çalışır?
 
 - **Takip dosyasının sekmeleri:**
-  - **Özet:** açık, geciken ve atanmamış görev sayıları, kişi bazında durum ve açık işlerin listesi.
-  - **Görevler:** açık işler. En yeni görev en üstte durur.
+  - **Özet:** açık görev, bugün gelen, atanmamış ve bu ay tamamlanan sayıları, kişi bazında durum ve
+    açık işlerin listesi (konu, hocanın notu, evrak tarihi). Sayılar her değişiklikte kendiliğinden yenilenir.
+  - **Görevler:** açık işler. En yeni görev en üstte durur. Görünen sütunlar: Evrak No, Evrak Tarihi,
+    Konu, Hocanın Notu, Sorumlu, Durum, Açıklama, Dosya, Eklenme.
   - **Tamamlananlar:** Durum "Tamamlandı" ya da "İptal" yapılınca görev otomatik olarak buraya taşınır.
     Tekrar "Bekliyor" ya da "Devam Ediyor" yapılırsa Görevler'e geri döner. Durumu panelden ya da
     doğrudan tablodan değiştirebilirsiniz.
