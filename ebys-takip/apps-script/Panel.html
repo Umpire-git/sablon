@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  :root { --mavi:#1f4e8c; --acik:#eef3fa; --kenar:#d6dde8; --yazi:#1d2433; --soluk:#6b7488; --kirmizi:#c0392b; --yesil:#2e7d4f; --sari:#b7791f; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color:var(--yazi); background:#f6f8fb; }
+  header { background:var(--mavi); color:#fff; padding:12px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  header h1 { font-size:17px; margin:0; flex:1; min-width:200px; }
+  header .ben { font-size:13px; opacity:.9; }
+  nav { display:flex; flex-wrap:wrap; gap:4px; padding:10px 16px 0; }
+  nav button { border:1px solid var(--kenar); background:#fff; padding:7px 12px; border-radius:8px 8px 0 0; cursor:pointer; font:inherit; }
+  nav button.aktif { background:var(--mavi); color:#fff; border-color:var(--mavi); }
+  nav .say { display:inline-block; min-width:20px; padding:0 6px; margin-left:4px; border-radius:10px; background:var(--acik); color:var(--mavi); font-size:12px; text-align:center; }
+  nav button.aktif .say { background:#fff; }
+  main { padding:12px 16px 40px; max-width:1100px; }
+  .filtre { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  .filtre input, .filtre select { padding:7px 9px; border:1px solid var(--kenar); border-radius:6px; font:inherit; background:#fff; }
+  .filtre input[type=search] { flex:1; min-width:180px; }
+  .kart { background:#fff; border:1px solid var(--kenar); border-left:4px solid var(--mavi); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+  .kart.gecikti { border-left-color:var(--kirmizi); }
+  .kart.bitti { border-left-color:var(--yesil); opacity:.75; }
+  .kart.genel { border-left-color:var(--sari); }
+  .ust { display:flex; flex-wrap:wrap; gap:6px 12px; align-items:baseline; }
+  .konu { font-weight:600; flex:1; min-width:200px; }
+  .etiket { font-size:12px; color:var(--soluk); }
+  .gorev { margin:6px 0; white-space:pre-wrap; }
+  details { font-size:13px; color:var(--soluk); margin:4px 0; }
+  details p { margin:4px 0; white-space:pre-wrap; color:var(--yazi); }
+  .alt { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px; }
+  .alt select, .alt input { padding:5px 7px; border:1px solid var(--kenar); border-radius:6px; font:inherit; font-size:13px; background:#fff; }
+  .alt input.aciklama { flex:1; min-width:160px; }
+  a { color:var(--mavi); }
+  .btn { border:0; border-radius:6px; padding:7px 12px; font:inherit; cursor:pointer; background:var(--mavi); color:#fff; }
+  .btn.yesil { background:var(--yesil); }
+  .btn.ince { background:#fff; color:var(--mavi); border:1px solid var(--kenar); }
+  .rozet { font-size:11px; padding:1px 7px; border-radius:10px; background:var(--acik); color:var(--mavi); }
+  .rozet.k { background:#fdecea; color:var(--kirmizi); }
+  table { border-collapse:collapse; width:100%; background:#fff; }
+  th, td { border:1px solid var(--kenar); padding:7px 9px; text-align:left; }
+  th { background:var(--acik); }
+  td.n { text-align:right; }
+  form.yeni { background:#fff; border:1px solid var(--kenar); border-radius:8px; padding:14px; display:grid; gap:10px; max-width:640px; }
+  form.yeni label { display:grid; gap:4px; font-size:13px; color:var(--soluk); }
+  form.yeni input, form.yeni select, form.yeni textarea { padding:8px; border:1px solid var(--kenar); border-radius:6px; font:inherit; color:var(--yazi); }
+  .bos { color:var(--soluk); padding:24px; text-align:center; }
+  #durum { position:fixed; bottom:12px; right:12px; background:#1d2433; color:#fff; padding:8px 12px; border-radius:6px; font-size:13px; display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kalite Koordinatörlüğü · Görev Takip</h1>
+  <span class="ben" id="ben"></span>
+  <button class="btn ince" onclick="yukle()">Yenile</button>
+</header>
+<nav id="sekmeler"></nav>
+<main id="icerik"><div class="bos">Yükleniyor…</div></main>
+<div id="durum"></div>
+
+<script>
+var V = null, sekme = 'benim';
+var F = { ara: '', durum: 'acik', kisi: '' };
+
+function bildir(m, sure) {
+  var d = document.getElementById('durum'); d.textContent = m; d.style.display = 'block';
+  clearTimeout(bildir.t); bildir.t = setTimeout(function () { d.style.display = 'none'; }, sure || 2500);
+}
+function hata(e) { bildir('Hata: ' + (e && e.message || e), 6000); }
+function esc(s) { return String(s || '').replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function bugun() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function acik(g) { return g.Durum !== 'Tamamlandı' && g.Durum !== 'İptal'; }
+function gecikti(g) { return acik(g) && g['Son Tarih'] && g['Son Tarih'] < bugun(); }
+
+function yukle() {
+  google.script.run.withSuccessHandler(function (v) { V = v; ciz(); }).withFailureHandler(hata).panelVerisi();
+}
+
+function sekmeler() {
+  var benim = V.gorevler.filter(function (g) { return g.Sorumlu === V.ben.ad && acik(g); }).length;
+  var genel = V.gorevler.filter(function (g) { return g.Sorumlu === 'Genel' && acik(g); }).length;
+  var tum = V.gorevler.filter(acik).length;
+  var s = [['benim', 'Benim işlerim', benim], ['genel', 'Genel / atanmamış', genel], ['tum', 'Tüm görevler', tum],
+           ['ozet', 'Kişi özeti', null], ['yeni', '+ Yeni görev', null]];
+  document.getElementById('sekmeler').innerHTML = s.map(function (x) {
+    return '<button class="' + (x[0] === sekme ? 'aktif' : '') + '" onclick="sekmeSec(\'' + x[0] + '\')">' + x[1] +
+      (x[2] !== null ? '<span class="say">' + x[2] + '</span>' : '') + '</button>';
+  }).join('');
+}
+function sekmeSec(s) { sekme = s; ciz(); }
+
+function ciz() {
+  document.getElementById('ben').textContent = V.ben.ad + (V.ben.yonetici ? ' · yönetici' : '');
+  sekmeler();
+  var el = document.getElementById('icerik');
+  if (sekme === 'ozet') { el.innerHTML = ozet(); return; }
+  if (sekme === 'yeni') { el.innerHTML = yeniForm(); return; }
+  el.innerHTML = filtreHtml() + '<div id="liste"></div>';
+  listeCiz();
+}
+
+function filtreHtml() {
+  var kisi = sekme === 'tum' ? '<select onchange="F.kisi=this.value;listeCiz()"><option value="">Herkes</option>' +
+    ['Genel'].concat(V.personel).map(function (p) { return '<option ' + (F.kisi === p ? 'selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>' : '';
+  return '<div class="filtre"><input type="search" placeholder="Ara: konu, evrak no, not…" value="' + esc(F.ara) +
+    '" oninput="F.ara=this.value;listeCiz()">' +
+    '<select onchange="F.durum=this.value;listeCiz()">' +
+    [['acik', 'Açık olanlar'], ['gecikti', 'Gecikenler'], ['bitti', 'Tamamlananlar'], ['hepsi', 'Hepsi']].map(function (x) {
+      return '<option value="' + x[0] + '" ' + (F.durum === x[0] ? 'selected' : '') + '>' + x[1] + '</option>';
+    }).join('') + '</select>' + kisi + '</div>';
+}
+
+function listeCiz() {
+  var l = V.gorevler.filter(function (g) {
+    if (sekme === 'benim' && g.Sorumlu !== V.ben.ad) return false;
+    if (sekme === 'genel' && g.Sorumlu !== 'Genel') return false;
+    if (sekme === 'tum' && F.kisi && g.Sorumlu !== F.kisi) return false;
+    if (F.durum === 'acik' && !acik(g)) return false;
+    if (F.durum === 'gecikti' && !gecikti(g)) return false;
+    if (F.durum === 'bitti' && g.Durum !== 'Tamamlandı') return false;
+    if (F.ara) {
+      var a = F.ara.toLocaleLowerCase('tr');
+      var t = [g.Konu, g['Evrak No'], g['Görev'], g['Hocanın Notu'], g['Açıklama'], g.Sorumlu].join(' ').toLocaleLowerCase('tr');
+      if (t.indexOf(a) < 0) return false;
+    }
+    return true;
+  });
+  l.sort(function (a, b) {
+    if (acik(a) !== acik(b)) return acik(a) ? -1 : 1;
+    var sa = a['Son Tarih'] || '9999', sb = b['Son Tarih'] || '9999';
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return String(b['Eklenme']).localeCompare(String(a['Eklenme']));
+  });
+  document.getElementById('liste').innerHTML = l.length ? l.map(kart).join('') : '<div class="bos">Gösterilecek görev yok.</div>';
+}
+
+function kart(g) {
+  var sinif = g.Durum === 'Tamamlandı' ? 'bitti' : gecikti(g) ? 'gecikti' : g.Sorumlu === 'Genel' ? 'genel' : '';
+  var id = esc(g.ID);
+  var kisiSec = '<select onchange="guncelle(\'' + id + '\',{Sorumlu:this.value})">' + ['Genel'].concat(V.personel).map(function (p) {
+    return '<option ' + (g.Sorumlu === p ? 'selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select>';
+  var durumSec = '<select onchange="guncelle(\'' + id + '\',{Durum:this.value})">' + V.durumlar.map(function (d) {
+    return '<option ' + (g.Durum === d ? 'selected' : '') + '>' + d + '</option>'; }).join('') + '</select>';
+  var not = g['Hocanın Notu'] && g['Hocanın Notu'] !== g['Görev'] ?
+    '<details><summary>Hocanın notu' + (g['Not Yazan'] ? ' · ' + esc(g['Not Yazan']) + ' ' + esc(g['Not Tarihi']) : '') + '</summary><p>' + esc(g['Hocanın Notu']) + '</p></details>' : '';
+  var tamam = g.Durum === 'Tamamlandı' ? '<span class="etiket">✓ ' + esc(g.Tamamlayan) + ' · ' + esc(g.Tamamlanma) + '</span>' :
+    '<button class="btn yesil" onclick="guncelle(\'' + id + '\',{Durum:\'Tamamlandı\'})">Tamamlandı</button>';
+  return '<div class="kart ' + sinif + '">' +
+    '<div class="ust"><span class="konu">' + esc(g.Konu || g['Görev']) + '</span>' +
+    (g['Evrak No'] ? '<span class="rozet">Evrak ' + esc(g['Evrak No']) + '</span>' : '<span class="rozet">' + esc(g.Kaynak) + '</span>') +
+    (gecikti(g) ? '<span class="rozet k">Gecikti</span>' : '') +
+    '<span class="etiket">' + esc(g.Gönderen || g.Ekleyen) + ' · ' + esc(g.Eklenme) + '</span></div>' +
+    (g.Konu ? '<div class="gorev">' + esc(g['Görev']) + '</div>' : '') + not +
+    '<div class="alt">' + kisiSec + durumSec +
+    '<input type="date" value="' + esc(g['Son Tarih']) + '" title="Son tarih" onchange="guncelle(\'' + id + '\',{\'Son Tarih\':this.value})">' +
+    '<input class="aciklama" placeholder="Açıklama / ne yapıldı" value="' + esc(g['Açıklama']) + '" onchange="guncelle(\'' + id + '\',{\'Açıklama\':this.value})">' +
+    (g.Dosya ? '<a href="' + esc(g.Dosya) + '" target="_blank">PDF</a>' : '') +
+    (g['EBYS Linki'] ? '<a href="' + esc(g['EBYS Linki']) + '" target="_blank">EBYS</a>' : '') +
+    tamam + '</div></div>';
+}
+
+function guncelle(id, alanlar) {
+  bildir('Kaydediliyor…');
+  google.script.run.withSuccessHandler(function (v) { V = v; sekmeler(); listeCiz(); bildir('Kaydedildi'); })
+    .withFailureHandler(hata).gorevGuncelle(id, alanlar);
+}
+
+function ozet() {
+  var ay = bugun().slice(0, 7);
+  var satir = ['Genel'].concat(V.personel).map(function (p) {
+    var g = V.gorevler.filter(function (x) { return x.Sorumlu === p; });
+    return '<tr><td>' + esc(p) + '</td><td class="n">' + g.filter(acik).length + '</td><td class="n">' +
+      g.filter(gecikti).length + '</td><td class="n">' +
+      g.filter(function (x) { return x.Durum === 'Tamamlandı' && String(x.Tamamlanma).slice(0, 7) === ay; }).length + '</td></tr>';
+  }).join('');
+  return '<table><tr><th>Kişi</th><th>Açık</th><th>Geciken</th><th>Bu ay tamamlanan</th></tr>' + satir + '</table>';
+}
+
+function yeniForm() {
+  return '<form class="yeni" onsubmit="return ekle(this)">' +
+    '<label>Görev *<textarea name="g" rows="3" required></textarea></label>' +
+    '<label>Konu / başlık<input name="k"></label>' +
+    '<label>Sorumlu<select name="s">' + ['Genel'].concat(V.personel).map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select></label>' +
+    '<label>Son tarih<input type="date" name="t"></label>' +
+    '<label>Açıklama<input name="a"></label>' +
+    '<div><button class="btn" type="submit">Görevi ekle</button></div></form>';
+}
+
+function ekle(f) {
+  bildir('Ekleniyor…');
+  google.script.run.withSuccessHandler(function (v) { V = v; sekme = 'tum'; F.durum = 'acik'; ciz(); bildir('Görev eklendi'); })
+    .withFailureHandler(hata).gorevEkle({ 'Görev': f.g.value, Konu: f.k.value, Sorumlu: f.s.value, 'Son Tarih': f.t.value, 'Açıklama': f.a.value });
+  return false;
+}
+
+yukle();
+setInterval(function () { if (!document.hidden && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') yukle(); }, 120000);
+</script>
+</body>
+</html>
