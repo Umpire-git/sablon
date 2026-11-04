@@ -76,7 +76,7 @@ satırını ve hangi bilginin hangi sütuna yazılacağını gösterir, örneği
 kendisi tanır: Sıra No, Gelen/Giden, Tarih, Sayı, Evrak/Kayıt No, Geldiği Yer, Konu, Sorumlu,
 Dosya/Link, Açıklama.
 
-Eşleşme yanlışsa Ayarlar sayfasına yeni bir satır ekleyin, örneğin `SUTUN_KONU` | `D`.
+Eşleşme yanlışsa Ayarlar sayfasına yeni bir satır ekleyin, örneğin `SUTUN_KONU` | `D`. Bu satır iki sekme için de geçerlidir. Yalnızca birini değiştirmek için `SUTUN_GELEN_KONU` ya da `SUTUN_GIDEN_KONU` yazın. "Günlü evrak", "son tarih" ve "termin" sütunları tanınır ama bu sütunlara bir şey yazılmaz.
 Bir alanın hiç yazılmamasını istiyorsanız değer olarak `-` yazın. Kullanılabilecek adlar:
 `SUTUN_SIRA`, `SUTUN_TUR`, `SUTUN_KAYITNO`, `SUTUN_SAYI`, `SUTUN_EVRAKTARIHI`, `SUTUN_KAYITTARIHI`,
 `SUTUN_YER`, `SUTUN_KONU`, `SUTUN_SORUMLU`, `SUTUN_DOSYA`, `SUTUN_ACIKLAMA`, `SUTUN_DOSYAKODU`.

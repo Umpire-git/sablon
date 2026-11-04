@@ -446,6 +446,7 @@ var ALANLAR = [
   ['tur', /gelen.{0,3}giden|giden.{0,3}gelen|^turu?$|evrak turu|^tipi?$|cinsi/],
   ['sayi', /sayisi?\b|^sayi/],
   ['kayitNo', /(evrak|kayit|kurum|genel|ebys).*(\bno\b|nosu|numara)|numarator|^kayit$/],
+  ['sonTarih', /gunlu|son tarih|termin|suresi?\b|cevap tarih/],
   ['evrakTarihi', /(evrak|yazi|belge).*tarih/],
   ['kayitTarihi', /tarih/],
   ['konu', /konu|ozet|icerik/],
@@ -457,7 +458,7 @@ var ALANLAR = [
 ];
 var ALAN_ADI = {
   dosyaKodu: 'Dosya kodu', tur: 'Gelen/Giden', sayi: 'Sayı', kayitNo: 'Evrak no', evrakTarihi: 'Evrak tarihi',
-  kayitTarihi: 'Kayıt tarihi', konu: 'Konu', yer: 'Geldiği/gittiği yer', sorumlu: 'Sorumlu', dosya: 'Drive linki',
+  kayitTarihi: 'Kayıt tarihi', sonTarih: 'Son tarih / günlü evrak (bu sütuna yazılmaz)', konu: 'Konu', yer: 'Geldiği/gittiği yer', sorumlu: 'Sorumlu', dosya: 'Drive linki',
   aciklama: 'Açıklama (hocanın notu)', sira: 'Sıra no'
 };
 
@@ -475,7 +476,7 @@ function hedefSekme_(tur) {
 function sutunHarfi_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
 
 /** Başlık satırını (ilk 10 satırda en çok eşleşen) ve alan → sütun eşleşmesini bulur. */
-function eslesme_(sh) {
+function eslesme_(sh, tur) {
   var n = Math.min(10, sh.getLastRow());
   var genislik = sh.getLastColumn();
   if (n < 1 || genislik < 1) throw new Error('Sekme boş: ' + sh.getName());
@@ -495,7 +496,7 @@ function eslesme_(sh) {
   if (enIyi.puan < 2) throw new Error('"' + sh.getName() + '" sekmesinde başlık satırı tanınamadı');
   // Elle düzeltme: Ayarlar'da SUTUN_KONU = C ya da başlık adı
   Object.keys(ALAN_ADI).forEach(function (alan) {
-    var d = ayar_('SUTUN_' + alan.toUpperCase());
+    var d = ayar_('SUTUN_' + (tur === 'Giden' ? 'GIDEN_' : 'GELEN_') + alan.toUpperCase()) || ayar_('SUTUN_' + alan.toUpperCase());
     if (!d) return;
     if (d === '-') { delete enIyi.sutunlar[alan]; return; }
     if (/^[A-Z]{1,2}$/i.test(d)) {
@@ -513,16 +514,17 @@ function eslesmeyiGoster() {
   var metin = [];
   ['Gelen', 'Giden'].forEach(function (tur) {
     try {
-      var sh = hedefSekme_(tur), e = eslesme_(sh);
+      var sh = hedefSekme_(tur), e = eslesme_(sh, tur);
       metin.push(tur + ' → "' + sh.getName() + '" sekmesi, başlık satırı ' + e.basSatir);
       Object.keys(ALAN_ADI).forEach(function (a) {
         var c = e.sutunlar[a];
-        metin.push('   ' + ALAN_ADI[a] + ': ' + (c ? sutunHarfi_(c) + ' (' + e.basliklar[c - 1] + ')' : '— yazılmaz'));
+        metin.push('   ' + ALAN_ADI[a] + ': ' + (c ? sutunHarfi_(c) + ' (' + e.basliklar[c - 1] + ')' : '—'));
       });
     } catch (err) { metin.push(tur + ': ' + err.message); }
     metin.push('');
   });
-  metin.push('Yanlış eşleşme varsa Ayarlar sayfasına örn. SUTUN_KONU = D satırı ekleyin ("-" yazarsanız o alan yazılmaz).');
+  metin.push('— olan alanlar yazılmaz. Yanlış eşleşme varsa Ayarlar sayfasına örn. SUTUN_GELEN_KONU = D (yalnızca gelen),');
+  metin.push('SUTUN_GIDEN_KONU = D (yalnızca giden) ya da SUTUN_KONU = D (ikisi için) satırı ekleyin. "-" yazarsanız o alan yazılmaz.');
   SpreadsheetApp.getUi().alert(metin.join('\n'));
 }
 
@@ -631,7 +633,7 @@ function evrakTablosunaYaz_(it) {
     kayitYaz_(no, { 'Tür': tur, 'Konu': ev.konu || it.konu, 'Tabloya yazıldı': 'Hayır (ayar kapalı)' });
     return;
   }
-  var sh = hedefSekme_(tur), e = eslesme_(sh), S = e.sutunlar;
+  var sh = hedefSekme_(tur), e = eslesme_(sh, tur), S = e.sutunlar;
 
   var varOlan = tablodaVarMi_(sh, e, it);
   if (varOlan) {
@@ -681,7 +683,7 @@ function evrakTablosunaYaz_(it) {
 function evrakTablosunaLink_(no, kayit, link) {
   kayit = kayitBul_(no);
   if (kayit.tablo !== 'Evet' || !kayit.tabloSatiri) return;
-  var sh = hedefSekme_(kayit.tur), e = eslesme_(sh);
+  var sh = hedefSekme_(kayit.tur), e = eslesme_(sh, kayit.tur);
   if (!e.sutunlar.dosya) return;
   var r = Number(kayit.tabloSatiri);
   if (e.sutunlar.kayitNo && String(sh.getRange(r, e.sutunlar.kayitNo).getDisplayValue()).trim() !== String(no)) return;
