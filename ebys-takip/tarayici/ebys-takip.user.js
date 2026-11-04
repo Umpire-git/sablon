@@ -155,7 +155,7 @@
         var t = el.textContent.replace(/\s+/g, ' ').trim();
         if (t && !/^[\d\s.-]+$/.test(t) && parca.indexOf(t) < 0) parca.push(t);
       });
-      return parca.map(function (t) { return t.split('»').pop().trim(); }).join(', ');
+      return parca.join(' | ');   // tam zincir; birim düzeyi sunucuda seçilir
     };
     var kod = doc.getElementById('ctl00_cp_ucClassificationCode_txtControlRhea_text');
     return {

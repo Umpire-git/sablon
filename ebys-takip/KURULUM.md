@@ -131,7 +131,7 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
   açıp **Notlar** bölümünü okur ve takip tablosuna gönderir. Hocanın notu "Ali: … Zeynep: …"
   biçimindeyse her kişiye ayrı görev açılır. Notta kimsenin adı geçmiyorsa görev
   **Genel / atanmamış** sekmesine düşer.
-- Yeni bir yazı aynı anda **evrak tablonuza** da satır olarak eklenir. Satırda tür, evrak no,
+- Yeni bir yazı aynı anda **evrak tablonuza** da satır olarak eklenir. Geldiği yer ana birim düzeyinde yazılır: "… » STR. GEL. DAİ. BAŞ. » Bütçe ve Performans Program Şube Müdürlüğü" yerine "Strateji Geliştirme Daire Başkanlığı". Bunu Ayarlar sayfasındaki `YER_DUZEYI` satırıyla değiştirebilirsiniz: `SON` en alt birimi, `TAM` bütün zinciri yazar. Açılmayan bir kısaltma için Ayarlar sayfasına `KISALTMA ÖZ. BÜR.` | `Özel Kalem` gibi bir satır ekleyin. Satırda tür, evrak no,
   tarih, geldiği yer, konu, dosya kodu, sorumlu ve hocanın notu yer alır; tabloda sütunu olmayan
   bilgi yazılmaz. Sıra numarası bir önceki satırın bir fazlası olarak verilir; o hücrede formül
   varsa ona dokunulmaz.

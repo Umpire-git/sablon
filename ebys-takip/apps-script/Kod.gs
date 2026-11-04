@@ -44,6 +44,7 @@ function kurulum() {
     ['GELEN_TABLOYA_YAZ', 'EVET', 'EVET ise yeni gelen yazılar evrak tablosuna otomatik satır olarak eklenir.'],
     ['GIDEN_TABLOYA_YAZ', 'EVET', 'EVET ise EBYS\'de "Kurum Dışına Gönderilmiş Olan Evrak" görevleri giden olarak eklenir.'],
     ['IS_ISLEMLER_KLASOR_ID', '', '"İş ve İşlemler" Drive klasörünün ID\'si. İçinde "Gelen Yazı" ve "Giden Yazı" klasörleri yoksa açılır.'],
+    ['YER_DUZEYI', 'DAIRE', 'Geldiği/gittiği yer nasıl yazılsın: DAIRE = şube/birim atlanır, ana birim yazılır (Strateji Geliştirme Daire Başkanlığı); SON = en alt birim; TAM = bütün zincir.'],
     ['AY_ALT_KLASORU', 'HAYIR', 'EVET ise PDF\'ler Gelen Yazı/2026-11 gibi ay klasörlerine ayrılır.'],
     ['EPOSTA_BILDIRIM', 'EVET', 'EVET ise görev atanınca kişiye e-posta gider.'],
     ['ALAN_ADI', 'usak.edu.tr', 'Panele yalnızca bu alan adındaki hesaplar girebilir.']
@@ -535,6 +536,63 @@ function trTarih_(s) {
   return m ? new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : (s || '');
 }
 
+// ---------------------------------------------------------------- geldiği / gittiği yer
+
+var KISALTMA_IFADE = {
+  'STR. GEL. DAİ. BAŞ.': 'Strateji Geliştirme Daire Başkanlığı',
+  'PER. DAİ. BAŞ.': 'Personel Daire Başkanlığı',
+  'ÖĞR. İŞL. DAİ. BAŞ.': 'Öğrenci İşleri Daire Başkanlığı',
+  'İDA. VE MAL. İŞL. DAİ. BAŞ.': 'İdari ve Mali İşler Daire Başkanlığı',
+  'BİL. İŞL. DAİ. BAŞ.': 'Bilgi İşlem Daire Başkanlığı',
+  'YAP. İŞL. VE TEK. DAİ. BAŞ.': 'Yapı İşleri ve Teknik Daire Başkanlığı',
+  'SAĞ. KÜL. VE SPOR DAİ. BAŞ.': 'Sağlık, Kültür ve Spor Daire Başkanlığı',
+  'KÜT. VE DOK. DAİ. BAŞ.': 'Kütüphane ve Dokümantasyon Daire Başkanlığı',
+  'YÜK. KUR. BAŞ.': 'Yükseköğretim Kurulu Başkanlığı',
+  'YÜK. KAL. KUR.': 'Yükseköğretim Kalite Kurulu',
+  'REK. MAK.': 'Rektörlük Makamı',
+  'GEN. SEK.': 'Genel Sekreterlik',
+  'HUK. MÜŞ.': 'Hukuk Müşavirliği'
+};
+var KISALTMA_KELIME = {
+  'DAİ.': 'Daire', 'BAŞ.': 'Başkanlığı', 'MÜD.': 'Müdürlüğü', 'FAK.': 'Fakültesi', 'DEK.': 'Dekanlığı',
+  'ENS.': 'Enstitüsü', 'KOO.': 'Koordinatörlüğü', 'KOOR.': 'Koordinatörlüğü', 'MER.': 'Merkezi',
+  'GEN.': 'Genel', 'SEK.': 'Sekreterliği', 'İŞL.': 'İşleri', 'ŞB.': 'Şube', 'ŞUB.': 'Şube',
+  'REK.': 'Rektörlüğü', 'YÜKS.': 'Yüksekokulu', 'MYO.': 'Meslek Yüksekokulu', 'UYG.': 'Uygulama',
+  'ARŞ.': 'Araştırma', 'MÜŞ.': 'Müşavirliği', 'KUR.': 'Kurulu', 'MAK.': 'Makamı', 'BÖL.': 'Bölümü'
+};
+var ALT_BIRIM = /(şube müdürlüğü|şb\.? ?müd|birimi$|bürosu$|servisi$|ofisi$|anabilim dalı|bilim dalı|programı$|sekreterliği$)/i;
+
+function kisaltmaAc_(t) {
+  t = String(t || '').replace(/\s+/g, ' ').trim();
+  // Ayarlar'da "KISALTMA STR. GEL. DAİ. BAŞ." | "Strateji Geliştirme Daire Başkanlığı" gibi ekler önce gelir
+  var v = SpreadsheetApp.getActive().getSheetByName(SAYFA.AYAR).getDataRange().getValues();
+  for (var i = 1; i < v.length; i++) {
+    var k = String(v[i][0]);
+    if (/^KISALTMA /i.test(k) && k.slice(9).trim().toUpperCase() === t.toUpperCase()) return String(v[i][1]).trim();
+  }
+  if (KISALTMA_IFADE[t.toUpperCase()]) return KISALTMA_IFADE[t.toUpperCase()];
+  if (!/[A-ZÇĞİÖŞÜ]{2,}\./.test(t)) return t;               // kısaltma yok
+  return t.split(' ').map(function (w) { return KISALTMA_KELIME[w.toUpperCase()] || w; }).join(' ');
+}
+
+/** "A » B » STR. GEL. DAİ. BAŞ. » Bütçe ... Şube Müdürlüğü" → "Strateji Geliştirme Daire Başkanlığı" */
+function yerAdi_(zincirler) {
+  var duzey = (ayar_('YER_DUZEYI') || 'DAIRE').toUpperCase();
+  return String(zincirler || '').split(' | ').map(function (z) {
+    if (duzey === 'TAM') return z.trim();
+    var parca = z.split('»').map(function (x) { return x.trim(); }).filter(function (x) { return x && !/^[\d\s.-]+$/.test(x); });
+    if (!parca.length) return '';
+    var sec = parca[parca.length - 1];
+    if (duzey !== 'SON') {
+      for (var i = parca.length - 1; i >= 0; i--) {
+        var acik = kisaltmaAc_(parca[i]);
+        if (!ALT_BIRIM.test(acik)) { sec = parca[i]; break; }
+      }
+    }
+    return kisaltmaAc_(sec);
+  }).filter(String).join(', ');
+}
+
 /** Bir sütunda evrak numarası var mı (elle girilmiş ya da önceden yazılmış) */
 function tablodaVarMi_(sh, e, it) {
   var son = sh.getLastRow();
@@ -603,7 +661,7 @@ function evrakTablosunaYaz_(it) {
   });
   var deger = {
     tur: tur, kayitNo: no, sayi: ev.sayi || '', evrakTarihi: trTarih_(ev.evrakTarihi || (S.kayitTarihi ? '' : ev.kayitTarihi)),
-    kayitTarihi: trTarih_(ev.kayitTarihi || ev.evrakTarihi), konu: ev.konu || it.konu, yer: ev.yer || '',
+    kayitTarihi: trTarih_(ev.kayitTarihi || ev.evrakTarihi), konu: ev.konu || it.konu, yer: yerAdi_(ev.yer),
     dosyaKodu: ev.dosyaKodu || '', sorumlu: sorumlular.join(', '),
     aciklama: (it.notlar || []).map(function (n) { return n.metin; }).filter(String).join(' / ')
   };
