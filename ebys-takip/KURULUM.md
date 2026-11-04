@@ -127,6 +127,21 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
 
 ### Nasıl çalışır?
 
+- **Takip dosyasının sekmeleri:**
+  - **Özet:** açık, geciken ve atanmamış görev sayıları, kişi bazında durum ve açık işlerin listesi.
+  - **Görevler:** açık işler. En yeni görev en üstte durur.
+  - **Tamamlananlar:** Durum "Tamamlandı" ya da "İptal" yapılınca görev otomatik olarak buraya taşınır.
+    Tekrar "Bekliyor" ya da "Devam Ediyor" yapılırsa Görevler'e geri döner. Durumu panelden ya da
+    doğrudan tablodan değiştirebilirsiniz.
+  - Teknik sütunlar (ID, anahtar vb.) gizlidir. Uzun notlar satırı uzatmaz; notun tamamını görmek
+    için hücreye tıklayın ya da paneli kullanın.
+- **Bütün sayfaların taranması:** Ekrandaki sayfadaki görevlerin hepsi yeniyse betik sonraki sayfaya
+  kendisi geçer. Bütün listeyi baştan sona taramak için kutudaki **"Tüm sayfaları tara"** düğmesine
+  basın. Görevler 4'erli gruplar halinde gönderilir; tarama yarıda kesilirse gönderilmiş olanlar
+  kaybolmaz ve bir sonraki açılışta kaldığı yerden devam edilir.
+- EBYS ana sayfası yalnızca **"Kaç Günlük Görevler"** ayarındaki gün sayısı kadar geriye giden görevleri
+  gösterir (en fazla 10 gün). Daha eski görevler için o ayarı en yükseğe alın.
+
 - Görev listesi her açıldığında betik yeni görevleri bulur. Her birinin evrak sayfasını arka planda
   açıp **Notlar** bölümünü okur ve takip tablosuna gönderir. Hocanın notu "Ali: … Zeynep: …"
   biçimindeyse her kişiye ayrı görev açılır. Notta kimsenin adı geçmiyorsa görev
@@ -157,6 +172,7 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
 
 | Belirti | Çözüm |
 |---|---|
+| Kutuda "Zaman aşımı" yazıyor | Yeni sürümde görevler küçük gruplar halinde gönderilir. Hata sürerse "Tüm sayfaları tara"ya tekrar basın; gönderilmiş olanlar tekrar yazılmaz. |
 | Kutuda "Anahtar hatalı" yazıyor | Ayarlardaki anahtarı Sheets'teki ile karşılaştırın. |
 | "Sunucu yanıtı okunamadı" yazıyor | Betik adresinin `/exec` ile bittiğinden ve dağıtımın "Herkes" erişiminde olduğundan emin olun. Olmuyorsa 3. adımdaki nota bakın. |
 | Görev geliyor ama PDF gelmiyor | `IS_ISLEMLER_KLASOR_ID` dolu mu kontrol edin. Evrak sayfasında elle gönder düğmesini deneyin. Yine olmazsa tarayıcı konsolundaki `[EBYS Takip]` satırlarını iletin. |

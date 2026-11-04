@@ -5,7 +5,8 @@
  *  - doPost : tarayıcı betiğinden gelen EBYS görevleri ve PDF'ler (gizli anahtarla)
  */
 
-var SAYFA = { GOREV: 'Görevler', PERSONEL: 'Personel', AYAR: 'Ayarlar', KAYIT: 'Aktarım Kaydı' };
+var SAYFA = { GOREV: 'Görevler', ARSIV: 'Tamamlananlar', PERSONEL: 'Personel', AYAR: 'Ayarlar', KAYIT: 'Aktarım Kaydı' };
+var BITMIS = ['Tamamlandı', 'İptal'];
 var KAYIT_SUTUN = ['Evrak No', 'Tür', 'Konu', 'Tabloya yazıldı', 'Tablo satırı', 'Drive dosyası', 'Tarih', 'Not'];
 
 var GOREV_SUTUN = [
@@ -24,12 +25,14 @@ function onOpen() {
     .addItem('Kurulum / onarım', 'kurulum')
     .addItem('Gizli anahtarı göster', 'anahtariGoster')
     .addItem('Evrak tablosu sütun eşleşmesini göster', 'eslesmeyiGoster')
+    .addItem('Görünümü düzenle (renkler, gizli sütunlar, özet)', 'gorunumuDuzenle')
     .addToUi();
 }
 
 function kurulum() {
   var ss = SpreadsheetApp.getActive();
   sayfaHazirla_(ss, SAYFA.GOREV, GOREV_SUTUN);
+  sayfaHazirla_(ss, SAYFA.ARSIV, GOREV_SUTUN);
   var p = sayfaHazirla_(ss, SAYFA.PERSONEL, PERSONEL_SUTUN);
   if (p.getLastRow() < 2) {
     p.getRange(2, 1, 1, 4).setValues([[
@@ -56,7 +59,173 @@ function kurulum() {
   var g = ss.getSheetByName(SAYFA.GOREV);
   var durumKurali = SpreadsheetApp.newDataValidation().requireValueInList(DURUMLAR, true).build();
   g.getRange(2, sutun_('Durum'), g.getMaxRows() - 1, 1).setDataValidation(durumKurali);
+  bitmisleriTasi_();
+  gorunumuDuzenle_();
   SpreadsheetApp.getUi().alert('Kurulum tamam. Şimdi Personel sayfasını doldurun, sonra Dağıt → Yeni dağıtım ile web uygulaması oluşturun.');
+}
+
+// ---------------------------------------------------------------- görünüm
+
+function gorunumuDuzenle() {
+  gorunumuDuzenle_();
+  SpreadsheetApp.getUi().alert('Görünüm düzenlendi. Personel listesi değişince bunu tekrar çalıştırın (Sorumlu açılır listesi güncellenir).');
+}
+
+function harf_(ad) { return sutunHarfi_(sutun_(ad)); }
+
+function gorunumuDuzenle_() {
+  var ss = SpreadsheetApp.getActive();
+  if (!ss.getSheetByName(SAYFA.ARSIV)) sayfaHazirla_(ss, SAYFA.ARSIV, GOREV_SUTUN);
+  gorevSayfasiBicimle_(ss.getSheetByName(SAYFA.GOREV), '#1f4e8c');
+  gorevSayfasiBicimle_(ss.getSheetByName(SAYFA.ARSIV), '#2e7d4f');
+  digerSayfalar_(ss);
+}
+
+function gorevSayfasiBicimle_(g, renk) {
+  var son = g.getMaxRows(), gen = GOREV_SUTUN.length;
+  var veri = g.getRange(2, 1, son - 1, gen);
+
+  // Başlık
+  g.getRange(1, 1, 1, gen).setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold')
+    .setVerticalAlignment('middle').setWrap(true);
+  g.setRowHeight(1, 34);
+  g.setFrozenRows(1);
+
+  // Satırlar tek satır kalsın: uzun not taşmaz, tamamı panelde ya da hücreye tıklayınca görünür
+  veri.setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setVerticalAlignment('middle').setFontSize(10);
+  g.setRowHeightsForced(2, son - 1, 24);
+
+  // Sadece gerekli sütunlar görünür
+  var gorunur = { 'Evrak No': 80, 'Konu': 250, 'Görev': 300, 'Sorumlu': 130, 'Durum': 110, 'Son Tarih': 95,
+                  'Eklenme': 105, 'Dosya': 80, 'Açıklama': 220, 'Hocanın Notu': 200 };
+  GOREV_SUTUN.forEach(function (b, i) {
+    if (gorunur[b]) { g.showColumns(i + 1); g.setColumnWidth(i + 1, gorunur[b]); }
+    else g.hideColumns(i + 1);
+  });
+  g.getRange(2, sutun_('Son Tarih'), son - 1, 1).setNumberFormat('dd.mm.yyyy');
+  g.getRange(2, sutun_('Eklenme'), son - 1, 1).setNumberFormat('dd.mm.yyyy hh:mm');
+  ['Evrak No', 'Durum', 'Son Tarih', 'Eklenme'].forEach(function (b) {
+    g.getRange(1, sutun_(b), son, 1).setHorizontalAlignment('center');
+  });
+
+  // Açılır listeler
+  g.getRange(2, sutun_('Durum'), son - 1, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(DURUMLAR, true).build());
+  var kisiler = [GENEL].concat(personel_().map(function (p) { return p.ad; }));
+  g.getRange(2, sutun_('Sorumlu'), son - 1, 1).setDataValidation(
+    SpreadsheetApp.newDataValidation().requireValueInList(kisiler, true).setAllowInvalid(true).build());
+
+  // Renkler: tamamlanan soluk yeşil, geciken kırmızı, devam eden sarı, atanmamış turuncu
+  var K = '$' + harf_('Durum') + '2', L = '$' + harf_('Son Tarih') + '2', J = '$' + harf_('Sorumlu') + '2';
+  var tumu = g.getRange(2, 1, son - 1, gen);
+  var kurallar = [
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="Tamamlandı"')
+      .setBackground('#eef7f0').setFontColor('#7a8a80').setRanges([tumu]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="İptal"')
+      .setFontColor('#a0a0a0').setStrikethrough(true).setRanges([tumu]).build(),
+    SpreadsheetApp.newConditionalFormatRule()
+      .whenFormulaSatisfied('=AND(' + K + '<>"Tamamlandı",' + K + '<>"İptal",' + L + '<>"",' + L + '<TODAY())')
+      .setBackground('#fdecea').setFontColor('#9b1c1c').setRanges([tumu]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + K + '="Devam Ediyor"')
+      .setBackground('#fff6dd').setRanges([g.getRange(2, sutun_('Durum'), son - 1, 1)]).build(),
+    SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied('=' + J + '="' + GENEL + '"')
+      .setFontColor('#b7791f').setBold(true).setRanges([g.getRange(2, sutun_('Sorumlu'), son - 1, 1)]).build()
+  ];
+  g.setConditionalFormatRules(kurallar);
+  if (!g.getFilter()) g.getRange(1, 1, son, gen).createFilter();
+  g.setTabColor(renk);
+}
+
+function digerSayfalar_(ss) {
+  var a = ss.getSheetByName(SAYFA.AYAR);
+  a.setColumnWidth(1, 210); a.setColumnWidth(2, 330); a.setColumnWidth(3, 520);
+  a.getRange(1, 1, a.getMaxRows(), 3).setVerticalAlignment('top');
+  a.getRange(1, 3, a.getMaxRows(), 1).setWrap(true).setFontColor('#6b7488');
+  a.setTabColor('#9aa5b8');
+  var p = ss.getSheetByName(SAYFA.PERSONEL);
+  [170, 230, 260, 170].forEach(function (w, i) { p.setColumnWidth(i + 1, w); });
+  p.setTabColor('#2e7d4f');
+  var k = kayitSayfasi_();
+  [80, 60, 260, 130, 90, 260, 130, 300].forEach(function (w, i) { k.setColumnWidth(i + 1, w); });
+  k.getRange(2, 1, k.getMaxRows() - 1, KAYIT_SUTUN.length).setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP);
+  k.setTabColor('#9aa5b8');
+
+  ozetSayfasi_(ss);
+  // Sıra: Özet, Görevler, Tamamlananlar, Personel, Ayarlar, Aktarım Kaydı
+  [ 'Özet', SAYFA.GOREV, SAYFA.ARSIV, SAYFA.PERSONEL, SAYFA.AYAR, SAYFA.KAYIT ].forEach(function (ad, i) {
+    var sh = ss.getSheetByName(ad);
+    if (sh) { ss.setActiveSheet(sh); ss.moveActiveSheet(i + 1); }
+  });
+  ss.setActiveSheet(ss.getSheetByName('Özet'));
+}
+
+/** Özet: sayılar, kişi tablosu ve açık işler; formüllerle canlı güncellenir */
+function ozetSayfasi_(ss) {
+  var o = ss.getSheetByName('Özet') || ss.insertSheet('Özet');
+  o.getRange(1, 1, o.getMaxRows(), o.getMaxColumns()).breakApart();
+  o.clear(); o.clearConditionalFormatRules();
+  o.setHiddenGridlines(true);
+  var G = "'" + SAYFA.GOREV + "'!";
+  var A = G + harf_('ID') + '2:' + harf_('ID'), D = G + harf_('Durum') + '2:' + harf_('Durum');
+  var S = G + harf_('Sorumlu') + '2:' + harf_('Sorumlu'), T = G + harf_('Son Tarih') + '2:' + harf_('Son Tarih');
+  var Z = "'" + SAYFA.ARSIV + "'!";
+  var B = Z + harf_('Tamamlanma') + '2:' + harf_('Tamamlanma');
+  var DZ = Z + harf_('Durum') + '2:' + harf_('Durum'), SZ = Z + harf_('Sorumlu') + '2:' + harf_('Sorumlu');
+  var acik = 'COUNTIFS(' + A + ',"<>",' + D + ',"<>Tamamlandı",' + D + ',"<>İptal"';
+
+  o.getRange('A1').setValue('Kalite Koordinatörlüğü · Görev Takip').setFontSize(18).setFontWeight('bold').setFontColor('#1f4e8c');
+  var url = ScriptApp.getService().getUrl();
+  o.getRange('A2').setValue(url ? 'Günlük kullanım için paneli açın: ' + url : 'Panel adresi: Dağıt → Dağıtımları yönet → Panel')
+    .setFontColor('#6b7488');
+
+  var kartlar = [
+    ['Açık görev', '=' + acik + ')', '#1f4e8c'],
+    ['Geciken', '=' + acik + ',' + T + ',"<"&TODAY(),' + T + ',"<>")', '#c0392b'],
+    ['Atanmamış', '=' + acik + ',' + S + ',"' + GENEL + '")', '#b7791f'],
+    ['Bu ay tamamlanan', '=COUNTIFS(' + DZ + ',"Tamamlandı",' + B + ',">="&EOMONTH(TODAY(),-1)+1)', '#2e7d4f']
+  ];
+  // Kart yerleri: A | B-D | F | G-J (E boşluk sütunu)
+  var yer = [[1, 1], [2, 3], [6, 1], [7, 4]];
+  kartlar.forEach(function (k, i) {
+    var c = yer[i][0], n = yer[i][1];
+    var ust = o.getRange(4, c, 1, n), alt = o.getRange(5, c, 1, n);
+    if (n > 1) { ust.merge(); alt.merge(); }
+    ust.setValue(k[0]).setFontColor('#6b7488').setFontSize(10);
+    alt.setFormula(k[1]).setFontSize(26).setFontWeight('bold').setFontColor(k[2]).setHorizontalAlignment('left');
+    o.getRange(4, c, 2, n).setBackground('#f3f6fb').setBorder(true, true, true, true, false, false, '#d6dde8', SpreadsheetApp.BorderStyle.SOLID);
+  });
+  o.setRowHeight(5, 46);
+
+  // Kişi tablosu
+  o.getRange('A7:D7').setValues([['Kişi', 'Açık', 'Geciken', 'Bu ay biten']]);
+  o.getRange('A8').setFormula("={\"" + GENEL + "\";FILTER('" + SAYFA.PERSONEL + "'!A2:A,'" + SAYFA.PERSONEL + "'!A2:A<>\"\")}");
+  for (var r = 8; r <= 22; r++) {
+    var k = '$A' + r;
+    o.getRange(r, 2).setFormula('=IF(' + k + '="","",' + acik + ',' + S + ',' + k + '))');
+    o.getRange(r, 3).setFormula('=IF(' + k + '="","",' + acik + ',' + S + ',' + k + ',' + T + ',"<"&TODAY(),' + T + ',"<>"))');
+    o.getRange(r, 4).setFormula('=IF(' + k + '="","",COUNTIFS(' + SZ + ',' + k + ',' + DZ + ',"Tamamlandı",' + B + ',">="&EOMONTH(TODAY(),-1)+1))');
+  }
+  o.getRange('A7:D7').setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
+  o.getRange('B7:D22').setHorizontalAlignment('center');
+  o.setConditionalFormatRules([
+    SpreadsheetApp.newConditionalFormatRule().whenNumberGreaterThan(0).setFontColor('#c0392b').setBold(true)
+      .setRanges([o.getRange('C8:C22')]).build()
+  ]);
+
+  // Açık işler listesi (son tarihe göre)
+  var c = function (b) { return 'Col' + sutun_(b); };
+  o.getRange('F7:J7').setValues([['Açık işler', 'Sorumlu', 'Durum', 'Son tarih', 'Evrak']])
+    .setBackground('#1f4e8c').setFontColor('#ffffff').setFontWeight('bold');
+  o.getRange('F8').setFormula('=IFERROR(QUERY({' + G + 'A2:' + sutunHarfi_(GOREV_SUTUN.length) + '},"select ' +
+    c('Görev') + ', ' + c('Sorumlu') + ', ' + c('Durum') + ', ' + c('Son Tarih') + ', ' + c('Evrak No') +
+    " where " + c('ID') + " is not null and " + c('Durum') + " <> 'Tamamlandı' and " + c('Durum') +
+    " <> 'İptal' order by " + c('Son Tarih') + " asc limit 25\",0),\"Açık iş yok\")");
+  o.getRange('I8:I32').setNumberFormat('dd.mm.yyyy');
+  o.getRange('F8:J32').setWrapStrategy(SpreadsheetApp.WrapStrategy.CLIP).setFontSize(10);
+
+  [150, 70, 70, 85, 24, 320, 130, 105, 90, 80].forEach(function (w, i) { o.setColumnWidth(i + 1, w); });
+  o.getRange('A1:H2').setWrapStrategy(SpreadsheetApp.WrapStrategy.OVERFLOW);
+  o.setTabColor('#c0392b');
 }
 
 function anahtariGoster() {
@@ -74,9 +243,19 @@ function sayfaHazirla_(ss, ad, basliklar) {
 
 function sutun_(ad) { return GOREV_SUTUN.indexOf(ad) + 1; }
 
+// Bir çalıştırma boyunca aynı sayfayı tekrar tekrar okumamak için
+var _ONB = {};
+function onbellek_(ad, fn) { if (!(ad in _ONB)) _ONB[ad] = fn(); return _ONB[ad]; }
+function onbellekSil_(ad) { delete _ONB[ad]; }
+
+function ayarSatirlari_() {
+  return onbellek_('ayar', function () {
+    return SpreadsheetApp.getActive().getSheetByName(SAYFA.AYAR).getDataRange().getValues();
+  });
+}
+
 function ayar_(ad) {
-  var sh = SpreadsheetApp.getActive().getSheetByName(SAYFA.AYAR);
-  var v = sh.getDataRange().getValues();
+  var v = ayarSatirlari_();
   for (var i = 1; i < v.length; i++) if (v[i][0] === ad) return String(v[i][1]).trim();
   return '';
 }
@@ -91,7 +270,9 @@ function sade_(s) {
   return String(s || '').replace(/[İI]/g, 'i').toLowerCase().replace(/[çğıöşüâîû]/g, function (c) { return tr[c]; });
 }
 
-function personel_() {
+function personel_() { return onbellek_('personel', personelOku_); }
+
+function personelOku_() {
   var v = SpreadsheetApp.getActive().getSheetByName(SAYFA.PERSONEL).getDataRange().getValues();
   var liste = [];
   for (var i = 1; i < v.length; i++) {
@@ -109,17 +290,82 @@ function personel_() {
   return liste;
 }
 
+/** Açık görevler (Görevler) + biten görevler (Tamamlananlar); her kayıt hangi sayfa ve satırda olduğunu bilir */
 function gorevler_() {
+  var ss = SpreadsheetApp.getActive(), out = [];
+  [SAYFA.GOREV, SAYFA.ARSIV].forEach(function (ad) {
+    var sh = ss.getSheetByName(ad);
+    if (!sh) return;
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) {
+      if (!v[i][0]) continue;
+      var o = { _satir: i + 1, _sayfa: ad };
+      GOREV_SUTUN.forEach(function (b, j) { o[b] = v[i][j]; });
+      out.push(o);
+    }
+  });
+  return out;
+}
+
+/** Satırı 2. satıra (en üste) ekler; biçim ve açılır listeler alttaki satırdan kopyalanır */
+function ustSatiraYaz_(sh, degerler) {
+  var n = degerler.length;
+  sh.insertRowBefore(2);
+  if (sh.getMaxRows() >= 3) {
+    var kaynak = sh.getRange(3, 1, 1, n), hedef = sh.getRange(2, 1, 1, n);
+    kaynak.copyTo(hedef, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    kaynak.copyTo(hedef, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+  }
+  sh.getRange(2, 1, 1, n).setValues([degerler]);
+}
+
+/** Görevi diğer sayfaya taşır (en üste) */
+function tasi_(sayfaAdi, satir, hedefAdi) {
+  var ss = SpreadsheetApp.getActive();
+  var kaynak = ss.getSheetByName(sayfaAdi), hedef = ss.getSheetByName(hedefAdi);
+  if (!hedef) hedef = sayfaHazirla_(ss, hedefAdi, GOREV_SUTUN);
+  var v = kaynak.getRange(satir, 1, 1, GOREV_SUTUN.length).getValues()[0];
+  ustSatiraYaz_(hedef, v);
+  kaynak.deleteRow(satir);
+}
+
+/** Durum değişince: biten görev Tamamlananlar'a, yeniden açılan Görevler'e */
+function durumaGoreTasi_(sayfaAdi, satir, durum, kim) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(sayfaAdi);
+  var bitti = BITMIS.indexOf(durum) >= 0;
+  if (sayfaAdi === SAYFA.GOREV && bitti) {
+    if (durum === 'Tamamlandı') {
+      if (!sh.getRange(satir, sutun_('Tamamlanma')).getValue()) sh.getRange(satir, sutun_('Tamamlanma')).setValue(new Date());
+      if (kim && !sh.getRange(satir, sutun_('Tamamlayan')).getValue()) sh.getRange(satir, sutun_('Tamamlayan')).setValue(kim);
+    }
+    tasi_(sayfaAdi, satir, SAYFA.ARSIV);
+  } else if (sayfaAdi === SAYFA.ARSIV && durum && !bitti) {
+    sh.getRange(satir, sutun_('Tamamlanma')).setValue('');
+    sh.getRange(satir, sutun_('Tamamlayan')).setValue('');
+    tasi_(sayfaAdi, satir, SAYFA.GOREV);
+  }
+}
+
+/** Kurulumda: Görevler'de kalmış biten görevleri arşive taşı */
+function bitmisleriTasi_() {
   var sh = SpreadsheetApp.getActive().getSheetByName(SAYFA.GOREV);
   var v = sh.getDataRange().getValues();
-  var out = [];
-  for (var i = 1; i < v.length; i++) {
-    if (!v[i][0]) continue;
-    var o = { _satir: i + 1 };
-    GOREV_SUTUN.forEach(function (b, j) { o[b] = v[i][j]; });
-    out.push(o);
+  for (var i = v.length - 1; i >= 1; i--) {
+    if (v[i][0] && BITMIS.indexOf(String(v[i][sutun_('Durum') - 1])) >= 0) tasi_(SAYFA.GOREV, i + 1, SAYFA.ARSIV);
   }
-  return out;
+}
+
+/** Tabloda "Durum" elle değiştirilince de taşı */
+function onEdit(e) {
+  try {
+    var sh = e.range.getSheet(), ad = sh.getName();
+    if ((ad !== SAYFA.GOREV && ad !== SAYFA.ARSIV) || e.range.getRow() < 2) return;
+    if (e.range.getNumRows() !== 1 || e.range.getNumColumns() !== 1 || e.range.getColumn() !== sutun_('Durum')) return;
+    if (!sh.getRange(e.range.getRow(), 1).getValue()) return;
+    var eposta = String(Session.getActiveUser().getEmail() || '').toLowerCase();
+    var p = personel_().filter(function (x) { return x.eposta === eposta; })[0];
+    durumaGoreTasi_(ad, e.range.getRow(), String(e.value || ''), p ? p.ad : eposta);
+  } catch (err) { /* elle düzenlemeyi engellemesin */ }
 }
 
 function tarihYazi_(d) {
@@ -135,7 +381,7 @@ function gorevYaz_(o) {
   o.ID = o.ID || yeniId_();
   o.Durum = o.Durum || 'Bekliyor';
   o['Eklenme'] = new Date();
-  sh.appendRow(GOREV_SUTUN.map(function (b) { return o[b] === undefined ? '' : o[b]; }));
+  ustSatiraYaz_(sh, GOREV_SUTUN.map(function (b) { return o[b] === undefined ? '' : o[b]; }));
   return o.ID;
 }
 
@@ -220,7 +466,7 @@ function gorevleriAl_(liste, kullanici) {
   var personel = personel_();
   var eklenen = 0, dosyaIstenen = [];
 
-  liste.forEach(function (it) {
+  liste.slice().reverse().forEach(function (it) {
     try { if (it.evrak && it.evrakNo) evrakTablosunaYaz_(it); } catch (e) { kayitNotu_(it.evrakNo, 'Tabloya yazılamadı: ' + e.message); }
     var notlar = (it.notlar && it.notlar.length) ? it.notlar : [{ yazan: '', tarih: '', metin: '' }];
     var dosyaVar = false, yeni = false;
@@ -265,9 +511,9 @@ function dosyaAl_(veri) {
   kayitYaz_(veri.evrakNo, { 'Drive dosyası': link });
 
   // Görevler sayfasında boş "Dosya" hücrelerine link
-  var sh = SpreadsheetApp.getActive().getSheetByName(SAYFA.GOREV);
+  var ss = SpreadsheetApp.getActive();
   gorevler_().forEach(function (g) {
-    if (String(g['Evrak No']) === String(veri.evrakNo) && !g.Dosya) sh.getRange(g._satir, sutun_('Dosya')).setValue(link);
+    if (String(g['Evrak No']) === String(veri.evrakNo) && !g.Dosya) ss.getSheetByName(g._sayfa).getRange(g._satir, sutun_('Dosya')).setValue(link);
   });
   // Evrak tablosunda yalnızca boş dosya hücresine link
   try { evrakTablosunaLink_(veri.evrakNo, kayit, link); } catch (e) { /* tablo erişilemezse PDF yine Drive'da */ }
@@ -356,9 +602,9 @@ function gorevGuncelle(id, alanlar) {
   var ben = yetkiKontrol_();
   var kilit = LockService.getScriptLock(); kilit.waitLock(30000);
   try {
-    var sh = SpreadsheetApp.getActive().getSheetByName(SAYFA.GOREV);
     var g = gorevler_().filter(function (x) { return x.ID === id; })[0];
     if (!g) throw new Error('Görev bulunamadı: ' + id);
+    var sh = SpreadsheetApp.getActive().getSheetByName(g._sayfa);
     var izinli = ['Durum', 'Sorumlu', 'Son Tarih', 'Açıklama', 'Görev'];
     Object.keys(alanlar).forEach(function (k) {
       if (izinli.indexOf(k) < 0) return;
@@ -369,14 +615,7 @@ function gorevGuncelle(id, alanlar) {
     if (alanlar.Sorumlu && alanlar.Sorumlu !== g.Sorumlu && alanlar.Sorumlu !== GENEL) {
       bildir_(alanlar.Sorumlu, id, g.Konu, alanlar['Görev'] || g['Görev']);
     }
-    if (alanlar.Durum === 'Tamamlandı' && g.Durum !== 'Tamamlandı') {
-      sh.getRange(g._satir, sutun_('Tamamlanma')).setValue(new Date());
-      sh.getRange(g._satir, sutun_('Tamamlayan')).setValue(ben.ad);
-    }
-    if (alanlar.Durum && alanlar.Durum !== 'Tamamlandı' && g.Durum === 'Tamamlandı') {
-      sh.getRange(g._satir, sutun_('Tamamlanma')).setValue('');
-      sh.getRange(g._satir, sutun_('Tamamlayan')).setValue('');
-    }
+    if (alanlar.Durum && alanlar.Durum !== g.Durum) durumaGoreTasi_(g._sayfa, g._satir, alanlar.Durum, ben.ad);
   } finally { kilit.releaseLock(); }
   return panelVerisi();
 }
@@ -407,7 +646,7 @@ function kayitSayfasi_() {
 }
 
 function kayitBul_(no) {
-  var v = kayitSayfasi_().getDataRange().getValues();
+  var v = onbellek_('kayit', function () { return kayitSayfasi_().getDataRange().getValues(); });
   for (var i = 1; i < v.length; i++) {
     if (String(v[i][0]).trim() === String(no).trim()) {
       return { satir: i + 1, tur: v[i][1], tablo: v[i][3], tabloSatiri: v[i][4], dosya: v[i][5] };
@@ -420,6 +659,7 @@ function kayitBul_(no) {
 function kayitYaz_(no, alanlar) {
   var sh = kayitSayfasi_();
   var k = kayitBul_(no);
+  onbellekSil_('kayit');
   if (!k.satir) {
     sh.appendRow(KAYIT_SUTUN.map(function (b) {
       if (b === 'Evrak No') return String(no);
@@ -462,8 +702,10 @@ var ALAN_ADI = {
   aciklama: 'Açıklama (hocanın notu)', sira: 'Sıra no'
 };
 
-function hedefSekme_(tur) {
-  var ss = SpreadsheetApp.openById(ayar_('EVRAK_TABLO_ID'));
+function hedefSekme_(tur) { return onbellek_('sekme_' + tur, function () { return hedefSekmeBul_(tur); }); }
+
+function hedefSekmeBul_(tur) {
+  var ss = onbellek_('evrakTablo', function () { return SpreadsheetApp.openById(ayar_('EVRAK_TABLO_ID')); });
   var ad = ayar_(tur === 'Giden' ? 'GIDEN_SEKME' : 'GELEN_SEKME');
   if (/^#\d+$/.test(ad)) {
     var gid = Number(ad.slice(1));
@@ -476,7 +718,9 @@ function hedefSekme_(tur) {
 function sutunHarfi_(n) { var s = ''; while (n > 0) { var m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = (n - m - 1) / 26; } return s; }
 
 /** Başlık satırını (ilk 10 satırda en çok eşleşen) ve alan → sütun eşleşmesini bulur. */
-function eslesme_(sh, tur) {
+function eslesme_(sh, tur) { return onbellek_('esl_' + sh.getName() + tur, function () { return eslesmeBul_(sh, tur); }); }
+
+function eslesmeBul_(sh, tur) {
   var n = Math.min(10, sh.getLastRow());
   var genislik = sh.getLastColumn();
   if (n < 1 || genislik < 1) throw new Error('Sekme boş: ' + sh.getName());
@@ -567,7 +811,7 @@ var ALT_BIRIM = /(şube müdürlüğü|şb\.? ?müd|birimi$|bürosu$|servisi$|of
 function kisaltmaAc_(t) {
   t = String(t || '').replace(/\s+/g, ' ').trim();
   // Ayarlar'da "KISALTMA STR. GEL. DAİ. BAŞ." | "Strateji Geliştirme Daire Başkanlığı" gibi ekler önce gelir
-  var v = SpreadsheetApp.getActive().getSheetByName(SAYFA.AYAR).getDataRange().getValues();
+  var v = ayarSatirlari_();
   for (var i = 1; i < v.length; i++) {
     var k = String(v[i][0]);
     if (/^KISALTMA /i.test(k) && k.slice(9).trim().toUpperCase() === t.toUpperCase()) return String(v[i][1]).trim();
@@ -654,7 +898,19 @@ function evrakTablosunaYaz_(it) {
     }
   }
   var r = son + 1;
-  while (!anaSutunlar.every(function (c) { return c === S.sira || hucreBos_(sh, r, c); })) r++;
+  var bak = anaSutunlar.filter(function (c) { return c !== S.sira; });
+  var enSag = Math.max.apply(null, bak.concat([1]));
+  for (var tur2 = 0; tur2 < 20; tur2++) {                       // 100'er satırlık bloklarla ara
+    var adet = Math.max(0, Math.min(100, sh.getMaxRows() - r + 1));
+    if (!adet) break;
+    var blok = sh.getRange(r, 1, adet, enSag);
+    var deg = blok.getValues(), form = blok.getFormulas(), bulundu = false;
+    for (var j = 0; j < adet; j++) {
+      if (bak.every(function (c) { return deg[j][c - 1] === '' && form[j][c - 1] === ''; })) { r += j; bulundu = true; break; }
+    }
+    if (bulundu) break;
+    r += adet;
+  }
   if (r > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), r - sh.getMaxRows());
 
   var sorumlular = [];

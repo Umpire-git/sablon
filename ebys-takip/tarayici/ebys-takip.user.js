@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         EBYS Görev Takip (Kalite Koordinatörlüğü)
 // @namespace    usak-kalite-koordinatorlugu
-// @version      0.1.0
+// @version      0.2.0
 // @description  EBYS görev listesindeki yazıları ve hocanın notlarını Google Sheets takip sistemine aktarır, PDF'i Drive'a gönderir.
 // @match        https://ebys.usak.edu.tr/enVision/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
 // @connect      script.google.com
 // @connect      script.googleusercontent.com
 // @run-at       document-idle
@@ -26,6 +27,7 @@
   };
 
   GM_registerMenuCommand('Ayarlar: web uygulaması adresi ve anahtar', ayarla);
+  GM_registerMenuCommand('Tüm sayfaları tara (bütün görev listesi)', function () { tara(true, true); });
   GM_registerMenuCommand('Listede görünenleri gönderilmiş say (eski işleri atla)', eskileriAtla);
   GM_registerMenuCommand('Gönderilmiş listesini sıfırla', function () {
     if (confirm('Gönderilmiş kayıtlar unutulsun mu? Sonraki taramada listedekiler yeniden gönderilir (aynı not iki kez eklenmez).')) {
@@ -65,7 +67,7 @@
       veri.anahtar = A.anahtar;
       GM_xmlhttpRequest({
         method: 'POST', url: A.url, data: JSON.stringify(veri),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, timeout: 120000,
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }, timeout: 300000,
         onload: function (r) {
           try {
             var j = JSON.parse(r.responseText);
@@ -256,58 +258,128 @@
   }
 
   // ------------------------------------------------------------ tarama
+  // Görevler 4'erli gruplar halinde okunur ve gönderilir; her grup ayrı kaydedilir, böylece
+  // yarıda kalsa bile gönderilenler kaybolmaz. Sayfalar EBYS'nin kendi sayfa değiştirme işleviyle gezilir.
+  var GRUP = 4;
   var calisiyor = false;
-  function tara(elle) {
-    if (calisiyor) return; calisiyor = true;
+
+  function sayfalama() {
+    var say = document.querySelector('input[id$="_hdnPageCount"]');
+    var idx = document.querySelector('input[id$="_hdnPageIndexTaskTree"]');
+    return { toplam: say ? (parseInt(say.value, 10) || 1) : 1, idx: idx };
+  }
+  function listeImza() { return listeyiOku().map(function (o) { return o.anahtar; }).join('#'); }
+
+  /** n. sayfaya geçer; liste değişince true, değişmezse (zaten o sayfadaysa) false döner */
+  function sayfayaGit(n) {
+    return new Promise(function (coz) {
+      var sp = sayfalama();
+      var w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+      if (!sp.idx || !sp.idx.name || typeof w.__doPostBack !== 'function') return coz(false);
+      var once = listeImza();
+      sp.idx.value = String(n);
+      w.__doPostBack(sp.idx.name.replace(/hdnPageIndexTaskTree$/, 'btnPageIndexChangeTaskTree'), String(n));
+      var bas = Date.now();
+      var t = setInterval(function () {
+        var simdi = listeImza();
+        if (simdi && simdi !== once) { clearInterval(t); setTimeout(function () { coz(true); }, 800); }
+        else if (Date.now() - bas > 15000) { clearInterval(t); coz(false); }
+      }, 500);
+    });
+  }
+
+  function durumKaydet(st) { st.zaman = Date.now(); GM_setValue('tarama', st); }
+
+  /** Ekrandaki sayfanın yeni görevlerini işler */
+  async function sayfayiIsle(st, sayfaNo) {
     var liste = listeyiOku();
-    var gonderilen = A.gonderilen;
-    var yeniler = liste.filter(function (o) { return !gonderilen[o.anahtar]; });
-    if (!yeniler.length) { calisiyor = false; if (elle) durum('Yeni görev yok'); return; }
-    var sayfalar = {};
-    var paket = [];
-    var i = 0;
-    var sonraki = function () {
-      if (i >= yeniler.length) return Promise.resolve();
-      var o = yeniler[i++];
-      durum('Okunuyor ' + i + '/' + yeniler.length + ': ' + o.konu.slice(0, 40));
-      return sayfaGetir(o.link).then(function (s) {
-        o.notlar = notlariOku(s.doc);
-        o.evrakNo = o.evrakNo || evrakNoOku(s.doc);
-        o.link = s.url;
-        o.evrak = evrakBilgisi(s.doc, o);
-        sayfalar[o.evrakNo] = s;
-        paket.push(o);
-      }, function (e) { console.warn('[EBYS Takip]', o.konu, e); })
-        .then(function () { return bekle(700); }).then(sonraki);
-    };
-    sonraki().then(function () {
-      if (!paket.length) throw new Error('Görev sayfaları okunamadı');
+    var g = A.gonderilen;
+    var yeniler = liste.filter(function (o) { return !g[o.anahtar]; });
+    for (var i = 0; i < yeniler.length; i += GRUP) {
+      var grup = yeniler.slice(i, i + GRUP), paket = [], sayfalar = {};
+      for (var k = 0; k < grup.length; k++) {
+        var o = grup[k];
+        durum((sayfaNo ? 'Sayfa ' + sayfaNo + ' · ' : '') + 'okunuyor ' + (i + k + 1) + '/' + yeniler.length + ': ' + o.konu.slice(0, 35));
+        try {
+          var s = await sayfaGetir(o.link);
+          o.notlar = notlariOku(s.doc);
+          o.evrakNo = o.evrakNo || evrakNoOku(s.doc);
+          o.link = s.url;
+          o.evrak = evrakBilgisi(s.doc, o);
+          sayfalar[o.evrakNo] = s;
+          paket.push(o);
+        } catch (e) { console.warn('[EBYS Takip]', o.konu, e); st.okunamayan = (st.okunamayan || 0) + 1; }
+        await bekle(500);
+      }
+      if (!paket.length) continue;
       durum('Takip sistemine gönderiliyor…');
-      return sunucu({
+      var c = await sunucu({
         islem: 'gorevler', kullanici: kullanici(),
         gorevler: paket.map(function (o) {
           return { evrakNo: o.evrakNo, konu: o.konu, gonderen: o.gonderen, gorevAdi: o.gorevAdi, link: o.link, notlar: o.notlar, evrak: o.evrak };
         })
       });
-    }).then(function (c) {
-      var g = A.gonderilen;
-      paket.forEach(function (o) { g[o.anahtar] = Date.now(); });
-      GM_setValue('gonderilen', g);
+      var gg = A.gonderilen;
+      paket.forEach(function (o) { gg[o.anahtar] = Date.now(); });
+      GM_setValue('gonderilen', gg);
+      st.eklenen += c.eklenen || 0;
       var istenen = (c.dosyaIstenen || []).filter(function (n) { return sayfalar[n]; });
-      var turu = {}; paket.forEach(function (o) { turu[o.evrakNo] = o.evrak && o.evrak.tur; });
-      var j = 0, hatali = 0;
-      var dosya = function () {
-        if (j >= istenen.length) return Promise.resolve();
-        var n = istenen[j++];
-        durum('PDF gönderiliyor ' + j + '/' + istenen.length + ' (evrak ' + n + ')');
-        return pdfGonder(sayfalar[n], n, turu[n]).catch(function (e) { hatali++; console.warn('[EBYS Takip] PDF', n, e); }).then(dosya);
-      };
-      return dosya().then(function () {
-        durum(c.eklenen + ' görev eklendi' + (istenen.length ? ', ' + (istenen.length - hatali) + '/' + istenen.length + ' PDF Drive\'a gitti' : ''), true);
-      });
-    }).catch(function (e) {
-      durum('Hata: ' + e.message, true);
-    }).then(function () { calisiyor = false; kutuGuncelle(); });
+      for (var j = 0; j < istenen.length; j++) {
+        var n = istenen[j];
+        var tur = (paket.filter(function (x) { return x.evrakNo === n; })[0] || {}).evrak;
+        durum('PDF gönderiliyor (evrak ' + n + ')');
+        try { await pdfGonder(sayfalar[n], n, tur && tur.tur); st.pdf++; }
+        catch (e) { st.pdfHata++; console.warn('[EBYS Takip] PDF', n, e); }
+      }
+      durumKaydet(st);
+    }
+    return { hepsiYeni: liste.length > 0 && yeniler.length === liste.length };
+  }
+
+  /**
+   * tum = true  : 1. sayfadan son sayfaya kadar hepsini tarar
+   * tum = false : ekrandaki sayfayı tarar; sayfadaki görevlerin hepsi yeniyse sonraki sayfaya geçer
+   */
+  async function tara(elle, tum) {
+    if (calisiyor) return;
+    calisiyor = true;
+    var st = GM_getValue('tarama', null);
+    var devam = st && st.aktif && (Date.now() - st.zaman < 10 * 60000);
+    if (!devam) st = { aktif: true, tum: !!tum, sonraki: null, eklenen: 0, pdf: 0, pdfHata: 0, okunamayan: 0 };
+    durumKaydet(st);
+    try {
+      var toplam = sayfalama().toplam;
+      var r = await sayfayiIsle(st, st.sonraki ? st.sonraki - 1 : null);
+      if (st.tum) {
+        for (var n = st.sonraki || 1; n <= toplam; n++) {
+          st.sonraki = n + 1; durumKaydet(st);
+          durum('Sayfa ' + n + '/' + toplam + ' açılıyor…');
+          await sayfayaGit(n);
+          await sayfayiIsle(st, n);
+        }
+      } else {
+        var m = st.sonraki || 2;
+        while (r.hepsiYeni && m <= toplam) {
+          st.sonraki = m + 1; durumKaydet(st);
+          durum('Sayfa ' + m + '/' + toplam + ' açılıyor (yeni görevler sürüyor)…');
+          if (!(await sayfayaGit(m))) break;
+          r = await sayfayiIsle(st, m);
+          m++;
+        }
+      }
+      var ozet = st.eklenen + ' görev eklendi';
+      if (st.pdf || st.pdfHata) ozet += ', ' + st.pdf + ' PDF Drive\'a gitti' + (st.pdfHata ? ' (' + st.pdfHata + ' PDF alınamadı)' : '');
+      if (st.okunamayan) ozet += ', ' + st.okunamayan + ' görev okunamadı';
+      if (st.eklenen || st.pdf || st.pdfHata || elle) durum(ozet, true);
+      else durum(GM_getValue('sonDurum', '') || 'Yeni görev yok');
+      st.aktif = false; durumKaydet(st);
+    } catch (e) {
+      // Kayıt durur, bir sonraki açılışta kaldığı yerden devam edilir; gönderilenler tekrar yazılmaz
+      durum('Hata: ' + e.message + ' · tekrar denenecek', true);
+      st.aktif = false; durumKaydet(st);
+    }
+    calisiyor = false;
+    kutuGuncelle();
   }
 
   function eskileriAtla() {
@@ -370,7 +442,10 @@
     if (!l.length) return;
     var g = A.gonderilen;
     var yeni = l.filter(function (o) { return !g[o.anahtar]; }).length;
-    if (!_taraDugme) { _taraDugme = dugme('', function () { tara(true); }); kutu().appendChild(_taraDugme); }
+    if (!_taraDugme) {
+      _taraDugme = dugme('', function () { tara(true, false); }); kutu().appendChild(_taraDugme);
+      if (sayfalama().toplam > 1) kutu().appendChild(dugme('Tüm sayfaları tara (' + sayfalama().toplam + ' sayfa)', function () { tara(true, true); }));
+    }
     _taraDugme.textContent = yeni ? yeni + ' yeni görevi takibe gönder' : 'Yeni görev yok · tekrar tara';
     if (!A.url) durum('Ayarlar girilmemiş: Tampermonkey menüsü → Ayarlar');
     else if (!calisiyor) durum(GM_getValue('sonDurum', '') || (A.otomatik ? 'Otomatik gönderim açık' : 'Elle gönderim'));
@@ -378,25 +453,30 @@
 
   // ------------------------------------------------------------ başlat
   function basla() {
-    // Görev listesi sayfalanınca ya da sonradan yüklenince yeniden say
-    var t;
+    // Görev listesi değişince (sayfa değişimi, sonradan yükleme) yeniden bak.
+    // Sayfadaki saat gibi sürekli değişen öğeler yüzünden yalnızca liste gerçekten değişince çalışır.
+    var sonImza = listeImza(), bekliyor = false;
     new MutationObserver(function (kayitlar) {
-      var disarida = kayitlar.some(function (k) { return !_kutu || !_kutu.contains(k.target); });
-      if (!disarida) return;
-      clearTimeout(t);
-      t = setTimeout(function () {
-        if (calisiyor || !listeyiOku().length) return;
+      if (bekliyor) return;
+      if (!kayitlar.some(function (k) { return !_kutu || !_kutu.contains(k.target); })) return;
+      bekliyor = true;
+      setTimeout(function () {
+        bekliyor = false;
+        var imza = listeImza();
+        if (imza === sonImza || calisiyor || !imza) return;
+        sonImza = imza;
         kutuGuncelle();
-        if (A.otomatik && A.url && A.anahtar) tara(false);
+        if (A.otomatik && A.url && A.anahtar) tara(false, false);
       }, 1500);
     }).observe(document.body, { childList: true, subtree: true });
 
-    var liste = listeyiOku();
-    if (liste.length) {
+    if (listeyiOku().length) {
       kutuGuncelle();
-      if (A.otomatik && A.url && A.anahtar) tara(false);
+      var st = GM_getValue('tarama', null);
+      var yarim = st && st.aktif && (Date.now() - st.zaman < 10 * 60000);
+      if (A.url && A.anahtar && (yarim || A.otomatik)) tara(false, yarim ? st.tum : false);
       if (/Portal_Rhea\.aspx/i.test(location.pathname) && A.yenileDk > 0) {
-        setTimeout(function () { if (!calisiyor) location.reload(); }, A.yenileDk * 60000);
+        setTimeout(function yenile() { if (calisiyor) return setTimeout(yenile, 60000); location.href = location.origin + location.pathname; }, A.yenileDk * 60000);
       }
     }
     evrakSayfasiDugmesi();

@@ -10,6 +10,11 @@
   header { background:var(--mavi); color:#fff; padding:12px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   header h1 { font-size:17px; margin:0; flex:1; min-width:200px; }
   header .ben { font-size:13px; opacity:.9; }
+  .kartlar { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; padding:12px 16px 0; max-width:1100px; }
+  .kartlar div { background:#fff; border:1px solid var(--kenar); border-radius:8px; padding:8px 12px; cursor:pointer; }
+  .kartlar b { display:block; font-size:24px; line-height:1.2; }
+  .kartlar span { font-size:12px; color:var(--soluk); }
+  @media (max-width:560px) { .kartlar { grid-template-columns:repeat(2, minmax(0,1fr)); } }
   nav { display:flex; flex-wrap:wrap; gap:4px; padding:10px 16px 0; }
   nav button { border:1px solid var(--kenar); background:#fff; padding:7px 12px; border-radius:8px 8px 0 0; cursor:pointer; font:inherit; }
   nav button.aktif { background:var(--mavi); color:#fff; border-color:var(--mavi); }
@@ -55,6 +60,7 @@
   <span class="ben" id="ben"></span>
   <button class="btn ince" onclick="yukle()">Yenile</button>
 </header>
+<section class="kartlar" id="kartlar"></section>
 <nav id="sekmeler"></nav>
 <main id="icerik"><div class="bos">Yükleniyor…</div></main>
 <div id="durum"></div>
@@ -88,11 +94,24 @@ function sekmeler() {
       (x[2] !== null ? '<span class="say">' + x[2] + '</span>' : '') + '</button>';
   }).join('');
 }
+function kartlar() {
+  var ay = bugun().slice(0, 7);
+  var k = [
+    ['Açık görev', V.gorevler.filter(acik).length, 'var(--mavi)', "sekme='tum';F.durum='acik';F.kisi=''"],
+    ['Geciken', V.gorevler.filter(gecikti).length, 'var(--kirmizi)', "sekme='tum';F.durum='gecikti';F.kisi=''"],
+    ['Atanmamış', V.gorevler.filter(function (g) { return acik(g) && g.Sorumlu === 'Genel'; }).length, 'var(--sari)', "sekme='genel';F.durum='acik'"],
+    ['Bu ay tamamlanan', V.gorevler.filter(function (g) { return g.Durum === 'Tamamlandı' && String(g.Tamamlanma).slice(0, 7) === ay; }).length, 'var(--yesil)', "sekme='tum';F.durum='bitti';F.kisi=''"]
+  ];
+  document.getElementById('kartlar').innerHTML = k.map(function (x) {
+    return '<div onclick="' + x[3] + ';ciz()"><b style="color:' + x[2] + '">' + x[1] + '</b><span>' + x[0] + '</span></div>';
+  }).join('');
+}
 function sekmeSec(s) { sekme = s; ciz(); }
 
 function ciz() {
   document.getElementById('ben').textContent = V.ben.ad + (V.ben.yonetici ? ' · yönetici' : '');
   sekmeler();
+  kartlar();
   var el = document.getElementById('icerik');
   if (sekme === 'ozet') { el.innerHTML = ozet(); return; }
   if (sekme === 'yeni') { el.innerHTML = yeniForm(); return; }
@@ -150,7 +169,7 @@ function kart(g) {
     '<div class="ust"><span class="konu">' + esc(g.Konu || g['Görev']) + '</span>' +
     (g['Evrak No'] ? '<span class="rozet">Evrak ' + esc(g['Evrak No']) + '</span>' : '<span class="rozet">' + esc(g.Kaynak) + '</span>') +
     (gecikti(g) ? '<span class="rozet k">Gecikti</span>' : '') +
-    '<span class="etiket">' + esc(g.Gönderen || g.Ekleyen) + ' · ' + esc(g.Eklenme) + '</span></div>' +
+    '<span class="etiket">' + esc(g['Gönderen'] || g.Ekleyen) + ' · ' + esc(g.Eklenme) + '</span></div>' +
     (g.Konu ? '<div class="gorev">' + esc(g['Görev']) + '</div>' : '') + not +
     '<div class="alt">' + kisiSec + durumSec +
     '<input type="date" value="' + esc(g['Son Tarih']) + '" title="Son tarih" onchange="guncelle(\'' + id + '\',{\'Son Tarih\':this.value})">' +
