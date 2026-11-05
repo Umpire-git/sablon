@@ -180,18 +180,23 @@ okur: giden sekmesine yazar (Sorumlu Kişi = Oluşturan), PDF'i Giden Yazı klas
 bir bilgisayarda kurulu olması yeterlidir.
 
 Bir kez yapılacaklar (betiğin kurulu olduğu bilgisayarda):
-1. EBYS'de sağ üstte adınıza tıklayıp kişisel ayarlarda **"Arama Kriterleri Sakla"**yı **Açık** yapın.
-2. **Evrak Arama**'yı açın ve şunları seçin:
+1. **Evrak Arama**'yı açın ve şunları seçin:
    - **Evrakın Birimi:** Kalite Koordinatörlüğü
    - **Evrak Türü:** Kurum İçi Giden Evrak, Kurum Dışı Giden Evrak (kullandığınız diğer giden türleri de)
    - **Evrak Durumu:** Onaylandı
    - **Tarih:** 7 Gün
-3. **Ara**'ya basın. Sol alttaki kutuda **"N giden yazıyı tabloya kaydet"** düğmesi çıkar; bir kez basın.
-   Betik bu arama sayfasının adresini hatırlar.
+2. **Ara**'ya basın.
+3. Arama kutusunun sağ üstündeki **Kayıtlı Aramalar** (disket simgesi) → **Aramayı Kaydet** ile aramaya
+   bir ad verin, örneğin **"Takip – Giden Yazılar"**. **"Kayıtlı Arama Kısayolu Ekle"** ile kısayollarınıza
+   da ekleyin.
+4. Bu kayıtlı aramayı kısayoldan açın. Sol alttaki kutuda **"Bu aramayı otomatik takip araması yap"**
+   düğmesine basın.
 
-Bundan sonra EBYS ana sayfası açıkken betik bu aramayı **saatte bir** arka planda kendisi yapar. Hemen
-yaptırmak için Tampermonkey menüsünden **"Giden yazı aramasını şimdi yap"**ı seçin. Birim adınız farklı
-yazılıyorsa menüden **"Birim adı (Evrak Arama için)"** ile düzeltin.
+Bundan sonra EBYS ana sayfası açıkken betik **yalnızca bu kayıtlı aramayı** saatte bir arka planda
+çalıştırır. Siz Evrak Arama'da istediğiniz başka aramayı yapabilirsiniz; takibi etkilemez. Hemen yaptırmak
+için Tampermonkey menüsünden **"Giden yazı aramasını şimdi yap"**ı seçin. Herhangi bir arama sonucundaki
+giden yazıları tek seferlik kaydetmek isterseniz kutudaki **"N giden yazıyı tabloya kaydet"** düğmesini
+kullanın.
 
 ## İlgi (yazılar arası ilişki)
 
@@ -234,3 +239,23 @@ yazılıyorsa menüden **"Birim adı (Evrak Arama için)"** ile düzeltin.
   **"Web uygulamasına erişen kullanıcı"** yapın; o zaman paneli kullanacak herkesin takip tablosunda
   düzenleme yetkisi olmalı ve ilk girişte Google'ın izin ekranını onaylaması gerekir. "Betik"
   dağıtımı "Ben" olarak kalmalı.
+
+## Siz olmadan da çalışması için
+
+| Parça | Kime bağlı | Yapılacak |
+|---|---|---|
+| Takip tablosu, panel, kod | **kalite@usak.edu.tr** (ortak hesap) | Hiçbir şey. Kişiye bağlı değil. |
+| Drive klasörleri (İş ve İşlemler) | Klasörün sahibi | Klasörleri **kalite@** hesabında açın ya da bir **ortak Drive**'a taşıyın. Kişisel hesapta kalırsa o kişi ayrılınca erişim sorunu çıkar. |
+| Gelen-giden evrak tablosu | Tablonun sahibi | kalite@ hesabının düzenleme yetkisi olmalı. |
+| EBYS'yi okuyan betik | Kurulu olduğu bilgisayar ve oradaki EBYS oturumu | Betiği **en az iki bilgisayara** kurun. Aynı yazı iki bilgisayardan gelse de bir kez işlenir. |
+
+- **Hangi bilgisayarlara kurulmalı:** Hocanın görev sevk ettiği kişilerin bilgisayarlarına. Gelen görevler
+  yalnızca sevk edilen kişinin EBYS ana sayfasına düşer. Giden yazılar ise Evrak Arama'dan alındığı için tek
+  bilgisayar yeter; yine de yedek olarak ikinci bir bilgisayarda da kayıtlı aramayı seçin.
+- **Sağlık kontrolü:** Özet sayfasının üstünde **"Son EBYS aktarımı: tarih (kim)"** yazar. Betik 24 saatten
+  uzun süre çalışmazsa (pazartesi için 72 saat) iş günleri sabah 9-10 arasında **yöneticilere ve ortak hesaba**
+  uyarı e-postası gider. Başka adresler de almak isterse Ayarlar'daki `UYARI_EPOSTA`'ya yazın.
+- **Uyarı gelince:** Betiğin kurulu olduğu bilgisayarlardan birinde EBYS'ye girip ana sayfayı açık bırakmak
+  yeterli. Birikmiş görevler kendiliğinden aktarılır, hiçbiri tekrar yazılmaz.
+- **Kod ve belgeler:** Bu klasörün (KURULUM.md dahil) bir kopyası kalite@ hesabının Drive'ında dursun. Yeni
+  gelen biri kurulumu buradan yapabilir.

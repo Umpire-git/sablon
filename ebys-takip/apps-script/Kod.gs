@@ -58,6 +58,7 @@ function kurulum() {
     ['YER_DUZEYI', 'DAIRE', 'Geldiği/gittiği yer nasıl yazılsın: DAIRE = şube/birim atlanır, ana birim yazılır (Strateji Geliştirme Daire Başkanlığı); SON = en alt birim; TAM = bütün zincir.'],
     ['AY_ALT_KLASORU', 'HAYIR', 'EVET ise PDF\'ler Gelen Yazı/2026-11 gibi ay klasörlerine ayrılır.'],
     ['CEVAP_YAZILINCA_TAMAMLA', 'HAYIR', 'EVET ise bir gelen yazıya ilgi tutan giden yazı imzalanınca o gelen yazının görevleri otomatik Tamamlandı yapılır. HAYIR ise sadece Açıklama\'ya "Cevap yazıldı" notu düşülür.'],
+    ['UYARI_EPOSTA', '', 'EBYS aktarımı 24 saatten uzun süre durursa ayrıca uyarı gidecek adresler (virgülle). Yöneticiler ve ortak hesap zaten alır.'],
     ['EPOSTA_BILDIRIM', 'EVET', 'EVET ise görev atanınca kişiye e-posta gider.'],
     ['ALAN_ADI', 'usak.edu.tr', 'Panele yalnızca bu alan adındaki hesaplar girebilir.']
   ];
@@ -66,6 +67,7 @@ function kurulum() {
 
   sayfaHazirla_(ss, SAYFA.KAYIT, KAYIT_SUTUN);
   bitmisleriTasi_();
+  saglikZamanla_();
   konulariEkle_();
   try { evrakTarihleriniDoldur_(); } catch (e) { /* evrak tablosuna erişilemezse geç */ }
   gorunumuDuzenle_();
@@ -239,8 +241,12 @@ function ozetGuncelle_() {
   if (liste.length) o.getRange(8, 6, liste.length, 6).setValues(liste);
   else o.getRange('F8').setValue('Açık iş yok');
 
-  o.getRange('A3').setValue('Son güncelleme: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm'))
-    .setFontColor('#9aa5b8').setFontSize(9);
+  var t = sonTemas_();
+  var saat = t.zaman ? (Date.now() - t.zaman) / 3600000 : Infinity;
+  o.getRange('A3').setValue('Son güncelleme: ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm') +
+      '   ·   Son EBYS aktarımı: ' + (t.zaman ? Utilities.formatDate(new Date(t.zaman), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm') +
+      (t.kim ? ' (' + t.kim + ')' : '') : 'henüz yok') + (saat > 24 ? '   ⚠ 24 saatten uzun süredir EBYS betiği çalışmadı' : ''))
+    .setFontColor(saat > 24 ? '#c0392b' : '#9aa5b8').setFontSize(saat > 24 ? 10 : 9).setFontWeight(saat > 24 ? 'bold' : 'normal');
 }
 
 function ozetGuncelleGuvenli_() { try { ozetGuncelle_(); } catch (e) { /* özet yenilenemese de iş devam etsin */ } }
@@ -590,6 +596,50 @@ function notuBol(not, personel) {
   return parca;
 }
 
+// ---------------------------------------------------------------- sağlık kontrolü
+// Sistem tek bir kişinin bilgisayarına bağlı kalmasın: betiğin en son ne zaman, kimin bilgisayarından
+// çalıştığı tutulur; uzun süre ses gelmezse yöneticilere ve ortak hesaba e-posta gider.
+
+function temasKaydet_(kim) {
+  try {
+    PropertiesService.getScriptProperties().setProperty('sonTemas', JSON.stringify({ zaman: Date.now(), kim: String(kim || '') }));
+  } catch (e) { /* kayıt tutulamasa da iş devam etsin */ }
+}
+
+function sonTemas_() {
+  try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('sonTemas') || '{}'); } catch (e) { return {}; }
+}
+
+/** Zamanlanmış: iş günleri sabah. Betik 24 saatten uzun süredir çalışmadıysa uyarır. */
+function saglikKontrolu() {
+  var gun = new Date().getDay();
+  if (gun === 0 || gun === 6) return;
+  var t = sonTemas_();
+  var saat = t.zaman ? (Date.now() - t.zaman) / 3600000 : Infinity;
+  // Pazartesi sabahı hafta sonunu sayma
+  var sinir = gun === 1 ? 72 : 24;
+  ozetGuncelleGuvenli_();
+  if (saat <= sinir) return;
+  var alicilar = personel_().filter(function (p) { return (p.yonetici || p.ortak) && p.eposta; }).map(function (p) { return p.eposta; });
+  var ek = ayar_('UYARI_EPOSTA');
+  if (ek) alicilar = alicilar.concat(ek.split(',').map(function (x) { return x.trim(); }).filter(String));
+  if (!alicilar.length) return;
+  var son = t.zaman ? Utilities.formatDate(new Date(t.zaman), Session.getScriptTimeZone(), 'dd.MM.yyyy HH:mm') + (t.kim ? ' (' + t.kim + ')' : '') : 'hiç';
+  try {
+    MailApp.sendEmail(alicilar.join(','), 'EBYS görev takibi: aktarım durdu',
+      'EBYS\'den takip sistemine en son aktarım: ' + son + '.\n\n' +
+      'Yeni gelen yazılar şu an takip tablosuna düşmüyor. Betiğin kurulu olduğu bilgisayarlardan birinde EBYS\'ye ' +
+      'girip ana sayfayı açık bırakmanız yeterli; birikmiş görevler otomatik aktarılır.\n\n' +
+      'Betiği başka bir bilgisayara kurmak için: KURULUM.md → "Tarayıcı betiği".\n');
+  } catch (e) { /* e-posta kotası */ }
+}
+
+/** Kurulumda: sağlık kontrolünü her gün 09:00-10:00 arasında çalışacak şekilde zamanla (bir kez) */
+function saglikZamanla_() {
+  var var_ = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'saglikKontrolu'; });
+  if (!var_) ScriptApp.newTrigger('saglikKontrolu').timeBased().everyDays(1).atHour(9).create();
+}
+
 // ---------------------------------------------------------------- tarayıcı betiği (doPost)
 
 function doPost(e) {
@@ -597,6 +647,7 @@ function doPost(e) {
   try {
     var veri = JSON.parse(e.postData.contents);
     if (!veri.anahtar || veri.anahtar !== ayar_('GIZLI_ANAHTAR')) throw new Error('Anahtar hatalı');
+    temasKaydet_(veri.kullanici);
     var kilit = LockService.getScriptLock();
     kilit.waitLock(30000);
     try {

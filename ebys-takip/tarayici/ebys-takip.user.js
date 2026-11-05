@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EBYS Görev Takip (Kalite Koordinatörlüğü)
 // @namespace    usak-kalite-koordinatorlugu
-// @version      0.4.0
+// @version      0.5.0
 // @description  EBYS görev listesindeki yazıları ve hocanın notlarını Google Sheets takip sistemine aktarır, PDF'i Drive'a gönderir.
 // @match        https://ebys.usak.edu.tr/enVision/*
 // @grant        GM_xmlhttpRequest
@@ -49,7 +49,7 @@
     var d = prompt('Ana sayfa kaç dakikada bir yenilensin? (0 = yenileme yok)', String(A.yenileDk));
     GM_setValue('url', u.trim()); GM_setValue('anahtar', k.trim()); GM_setValue('otomatik', o);
     GM_setValue('yenileDk', Math.max(0, parseInt(d, 10) || 0));
-    sunucu({ islem: 'kontrol' }).then(function () { alert('Bağlantı tamam.'); }, function (e) { alert('Bağlantı kurulamadı: ' + e.message); });
+    sunucu({ islem: 'kontrol', kullanici: kullanici() }).then(function () { alert('Bağlantı tamam.'); }, function (e) { alert('Bağlantı kurulamadı: ' + e.message); });
     kutuGuncelle();
   }
 
@@ -509,19 +509,35 @@
                   : 'Yeni giden yazı yok';
   }
 
-  /** Evrak Arama sayfasındayken: adres hatırlanır, düğme çıkar, otomatikse gönderilir */
+  /**
+   * Evrak Arama sayfasındayken: sonuçlardaki giden yazıları kaydetme düğmesi çıkar.
+   * Otomatik takip için hangi aramanın kullanılacağı ELLE seçilir ("Bu aramayı otomatik takip araması yap"),
+   * böylece sizin başka aramalarınız arka plandaki takibi etkilemez. En iyisi EBYS'de kaydedilmiş bir aramadır.
+   */
   function aramaSayfasindaysa() {
     if (!aramaSayfasiMi(document)) return;
-    GM_setValue('aramaUrl', location.origin + location.pathname + location.search);
+    var buAdres = location.href;
+    var kayitli = GM_getValue('aramaUrl', '');
     var say = gidenleriSec(aramaSonuclari(document)).filter(function (r) { return !GM_getValue('aramaIslenen', {})[r.no]; }).length;
-    var b = dugme(say ? say + ' giden yazıyı tabloya kaydet' : 'Bu sonuçlarda yeni giden yazı yok', async function () {
+    kutu().appendChild(dugme(say ? say + ' giden yazıyı tabloya kaydet' : 'Bu sonuçlarda yeni giden yazı yok', async function () {
       if (calisiyor) return; calisiyor = true;
       try { durum(gidenOzeti(await gidenleriGonder(document, location.href)), true); }
       catch (e) { durum('Hata: ' + e.message, true); }
       calisiyor = false;
-    });
-    kutu().appendChild(b);
-    durum('Evrak Arama: birimin imzalı giden yazıları okunur. Arama ölçütleri kaydedilirse ana sayfa bunu saatte bir kendisi yapar.');
+    }));
+    if (kayitli === buAdres) {
+      durum('Bu sayfa otomatik giden takibi için kullanılıyor (ana sayfa açıkken saatte bir).');
+    } else {
+      kutu().appendChild(dugme('Bu aramayı otomatik takip araması yap', function () {
+        if (!confirm('Ana sayfa açıkken saatte bir bu arama arka planda yapılacak ve sonuçtaki imzalı giden yazılar kaydedilecek.\n\n' +
+                     'Bunun için EBYS\'de "Aramayı Kaydet" ile kaydettiğiniz aramayı açmış olmanız önerilir; ' +
+                     'böylece başka aramalarınız bunu etkilemez. Devam edilsin mi?')) return;
+        GM_setValue('aramaUrl', buAdres); GM_setValue('sonArama', 0);
+        durum('Kaydedildi: otomatik giden takibi bu aramayı kullanacak.', true);
+      }));
+      durum(kayitli ? 'Otomatik takip başka bir kayıtlı aramayı kullanıyor. Bu sayfa yalnızca elle kaydetmek içindir.'
+                    : 'Otomatik giden takibi için henüz arama seçilmedi.');
+    }
   }
 
   /** Ana sayfadayken saatte bir: kayıtlı arama sayfası gizli çerçevede açılır, "Ara"ya basılır, sonuçlar işlenir */
@@ -649,6 +665,11 @@
     }
     evrakSayfasiDugmesi();
     aramaSayfasindaysa();
+    // Yeni görev olmasa da yarım saatte bir "çalışıyorum" bilgisi (takip tablosundaki sağlık kontrolü için)
+    if (A.url && A.anahtar && Date.now() - GM_getValue('sonKontrol', 0) > 30 * 60000) {
+      GM_setValue('sonKontrol', Date.now());
+      sunucu({ islem: 'kontrol', kullanici: kullanici() }).catch(function (e) { console.warn('[EBYS Takip] kontrol', e); });
+    }
     if (/Portal_Rhea\.aspx/i.test(location.pathname)) setTimeout(arkaPlanArama, 20000);
   }
   if (window.top === window.self) basla();
