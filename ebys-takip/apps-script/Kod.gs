@@ -619,6 +619,10 @@ function gorevleriAl_(liste, kullanici) {
 
   liste.slice().reverse().forEach(function (it) {
     try { if (it.evrak && it.evrakNo) evrakTablosunaYaz_(it); } catch (e) { kayitNotu_(it.evrakNo, 'Tabloya yazılamadı: ' + e.message); }
+    if (it.sadeceKayit) {                                   // kendi yazdığımız, imzalanmış yazı: görev açılmaz
+      if (it.evrakNo && !kayitBul_(it.evrakNo).dosya) dosyaIstenen.push(it.evrakNo);
+      return;
+    }
     var konu = (it.evrak && it.evrak.konu) || it.konu || '';
     var notlar = (it.notlar && it.notlar.length) ? it.notlar : [{ yazan: '', tarih: '', metin: '' }];
     var dosyaVar = false, yeni = false;
@@ -1039,6 +1043,13 @@ function tablodaVarMi_(sh, e, it) {
 }
 
 /** it: betikten gelen görev + it.evrak {tur, konu, kayitTarihi, evrakTarihi, sayi, yer, dosyaKodu} */
+/** EBYS'deki ad soyadı Personel listesindeki yazılışa çevirir (bulamazsa olduğu gibi bırakır) */
+function personelAdi_(ad) {
+  var a = sade_(ad).replace(/\s+/g, ' ').trim();
+  var p = personel_().filter(function (x) { return sade_(x.ad).replace(/\s+/g, ' ').trim() === a; })[0];
+  return p ? p.ad : ad;
+}
+
 function evrakTablosunaYaz_(it) {
   var ev = it.evrak, tur = ev.tur === 'Giden' ? 'Giden' : 'Gelen', no = String(it.evrakNo);
   var kayit = kayitBul_(no);
@@ -1087,6 +1098,7 @@ function evrakTablosunaYaz_(it) {
   (it.notlar || []).forEach(function (n) {
     notuBol(n.metin).forEach(function (p) { if (p.kisi !== GENEL && sorumlular.indexOf(p.kisi) < 0) sorumlular.push(p.kisi); });
   });
+  if (!sorumlular.length && it.hazirlayan) sorumlular.push(personelAdi_(it.hazirlayan));
   var deger = {
     tur: tur, kayitNo: no, sayi: ev.sayi || '', evrakTarihi: trTarih_(ev.evrakTarihi || (S.kayitTarihi ? '' : ev.kayitTarihi)),
     kayitTarihi: trTarih_(ev.kayitTarihi || ev.evrakTarihi), konu: ev.konu || it.konu, yer: yerAdi_(ev.yer),

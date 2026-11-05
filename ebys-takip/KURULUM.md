@@ -161,6 +161,9 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
   tarih, geldiği yer, konu, dosya kodu, sorumlu ve hocanın notu yer alır; tabloda sütunu olmayan
   bilgi yazılmaz. Sıra numarası bir önceki satırın bir fazlası olarak verilir; o hücrede formül
   varsa ona dokunulmaz.
+- **Kendi yazdığınız yazılar:** İmzalanınca ana sayfaya düşen "Hazırlamış Olduğunuz Evrak Onaylanmıştır"
+  satırları görev açılmadan **giden** sekmesine yazılır (Sorumlu Kişi = yazıyı hazırlayan) ve PDF'i
+  Giden Yazı klasörüne konur. Betik, yazıyı hazırlayan kişinin bilgisayarında kurulu olmalıdır.
 - "Gelen Evrak Bilgilerini Güncelleyiniz" görevleri **gelen** sayılır. "Kurum Dışına Gönderilmiş
   Olan Evrak…" görevleri **giden** sayılır.
 - PDF, **İş ve İşlemler / Gelen Yazı** (ya da **Giden Yazı**) klasörüne gider. Linki takip

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EBYS Görev Takip (Kalite Koordinatörlüğü)
 // @namespace    usak-kalite-koordinatorlugu
-// @version      0.2.0
+// @version      0.3.0
 // @description  EBYS görev listesindeki yazıları ve hocanın notlarını Google Sheets takip sistemine aktarır, PDF'i Drive'a gönderir.
 // @match        https://ebys.usak.edu.tr/enVision/*
 // @grant        GM_xmlhttpRequest
@@ -98,8 +98,12 @@
         link: a.href, gorevAdi: p >= 0 ? baslik.slice(0, p).trim() : baslik, konu: konu || baslik, evrakNo: evrakNo,
         gonderen: gonderenEl ? gonderenEl.textContent.trim() : '', listeTarihi: tarihEl ? tarihEl.textContent.trim() : ''
       };
+      // "Hazırlamış Olduğunuz Evrak Onaylanmıştır": kişinin kendi yazdığı yazı imzalandı.
+      // Görev açılmaz; yalnızca giden tablosuna yazılır ve PDF'i Drive'a gider.
+      o.sadeceKayit = /hazırlamış olduğunuz evrak onaylanmıştır/i.test(o.gorevAdi);
       o.anahtar = [o.evrakNo || o.konu, o.listeTarihi, o.gorevAdi].join('|');
       if (gor[o.anahtar]) return; gor[o.anahtar] = 1;
+      if (!o.evrakNo && /^evrak sevkedildi/i.test(o.gorevAdi)) return;
       out.push(o);
     });
     return out;
@@ -306,6 +310,7 @@
           o.evrakNo = o.evrakNo || evrakNoOku(s.doc);
           o.link = s.url;
           o.evrak = evrakBilgisi(s.doc, o);
+          if (o.sadeceKayit) o.evrak.tur = 'Giden';
           sayfalar[o.evrakNo] = s;
           paket.push(o);
         } catch (e) { console.warn('[EBYS Takip]', o.konu, e); st.okunamayan = (st.okunamayan || 0) + 1; }
@@ -316,7 +321,8 @@
       var c = await sunucu({
         islem: 'gorevler', kullanici: kullanici(),
         gorevler: paket.map(function (o) {
-          return { evrakNo: o.evrakNo, konu: o.konu, gonderen: o.gonderen, gorevAdi: o.gorevAdi, link: o.link, notlar: o.notlar, evrak: o.evrak };
+          return { evrakNo: o.evrakNo, konu: o.konu, gonderen: o.gonderen, gorevAdi: o.gorevAdi, link: o.link, notlar: o.notlar,
+                   evrak: o.evrak, sadeceKayit: !!o.sadeceKayit, hazirlayan: o.sadeceKayit ? kullanici() : '' };
         })
       });
       var gg = A.gonderilen;
