@@ -164,7 +164,7 @@ function listeCiz() {
     if (F.durum === 'bitti' && g.Durum !== 'Tamamlandı') return false;
     if (F.ara) {
       var a = F.ara.toLocaleLowerCase('tr');
-      var t = [g.Konu, g['Evrak No'], g['Hocanın Notu'], g['Görev'], g['Açıklama'], g.Sorumlu, g['Evrak Tarihi']].join(' ').toLocaleLowerCase('tr');
+      var t = [g.Konu, g['Evrak No'], g['Hocanın Notu'], g['Görev'], g['Açıklama'], g.Sorumlu, g['Evrak Tarihi'], g['İlgi']].join(' ').toLocaleLowerCase('tr');
       if (t.indexOf(a) < 0) return false;
     }
     return true;
@@ -197,7 +197,7 @@ function kart(g) {
     (g['Evrak No'] ? '<span class="rozet">Evrak ' + esc(g['Evrak No']) + '</span>' : '<span class="rozet">' + esc(g.Kaynak) + '</span>') +
     (g['Evrak Tarihi'] ? '<span class="etiket">Evrak tarihi: ' + esc(g['Evrak Tarihi']) + '</span>' : '') +
     (bugunGelen(g) ? '<span class="rozet k">Bugün geldi</span>' : '') + '</div>' +
-    not +
+    not + (g['İlgi'] ? '<div class="etiket">İlgi: ' + esc(g['İlgi']) + '</div>' : '') +
     '<div class="alt">' + kisiSec + durumSec +
     '<input class="aciklama" placeholder="Açıklama / ne yapıldı" value="' + esc(g['Açıklama']) + '" onchange="guncelle(\'' + id + '\',{\'Açıklama\':this.value})">' +
     (g.Dosya ? '<a href="' + esc(g.Dosya) + '" target="_blank">PDF</a>' : '') +

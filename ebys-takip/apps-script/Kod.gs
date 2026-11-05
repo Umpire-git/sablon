@@ -7,16 +7,16 @@
 
 var SAYFA = { GOREV: 'Görevler', ARSIV: 'Tamamlananlar', PERSONEL: 'Personel', AYAR: 'Ayarlar', KAYIT: 'Aktarım Kaydı' };
 var BITMIS = ['Tamamlandı', 'İptal'];
-var KAYIT_SUTUN = ['Evrak No', 'Tür', 'Konu', 'Tabloya yazıldı', 'Tablo satırı', 'Drive dosyası', 'Tarih', 'Not'];
+var KAYIT_SUTUN = ['Evrak No', 'Tür', 'Konu', 'Tabloya yazıldı', 'Tablo satırı', 'Drive dosyası', 'Tarih', 'Not', 'İlgi', 'Cevap'];
 
 var GOREV_SUTUN = [
   // görünen sütunlar
-  'Evrak No', 'Evrak Tarihi', 'Konu', 'Hocanın Notu', 'Sorumlu', 'Durum', 'Açıklama', 'Dosya', 'Eklenme',
+  'Evrak No', 'Evrak Tarihi', 'Konu', 'Hocanın Notu', 'İlgi', 'Sorumlu', 'Durum', 'Açıklama', 'Dosya', 'Eklenme',
   // gizli (sistemin kullandığı) sütunlar
   'ID', 'Kaynak', 'Gönderen', 'Not Yazan', 'Not Tarihi', 'Görev', 'Son Tarih', 'Ekleyen',
   'Tamamlanma', 'Tamamlayan', 'EBYS Linki', 'Anahtar'
 ];
-var GORUNUR = { 'Evrak No': 80, 'Evrak Tarihi': 90, 'Konu': 260, 'Hocanın Notu': 380, 'Sorumlu': 130,
+var GORUNUR = { 'Evrak No': 80, 'Evrak Tarihi': 90, 'Konu': 260, 'Hocanın Notu': 380, 'İlgi': 220, 'Sorumlu': 130,
                 'Durum': 110, 'Açıklama': 220, 'Dosya': 70, 'Eklenme': 105 };
 var PERSONEL_SUTUN = ['Ad Soyad', 'E-posta', 'Notta geçen adlar (virgülle)', 'Rol (Yönetici/Personel)'];
 var DURUMLAR = ['Bekliyor', 'Devam Ediyor', 'Tamamlandı', 'İptal'];
@@ -57,6 +57,7 @@ function kurulum() {
     ['IS_ISLEMLER_KLASOR_ID', '', '"İş ve İşlemler" Drive klasörünün ID\'si. İçinde "Gelen Yazı" ve "Giden Yazı" klasörleri yoksa açılır.'],
     ['YER_DUZEYI', 'DAIRE', 'Geldiği/gittiği yer nasıl yazılsın: DAIRE = şube/birim atlanır, ana birim yazılır (Strateji Geliştirme Daire Başkanlığı); SON = en alt birim; TAM = bütün zincir.'],
     ['AY_ALT_KLASORU', 'HAYIR', 'EVET ise PDF\'ler Gelen Yazı/2026-11 gibi ay klasörlerine ayrılır.'],
+    ['CEVAP_YAZILINCA_TAMAMLA', 'HAYIR', 'EVET ise bir gelen yazıya ilgi tutan giden yazı imzalanınca o gelen yazının görevleri otomatik Tamamlandı yapılır. HAYIR ise sadece Açıklama\'ya "Cevap yazıldı" notu düşülür.'],
     ['EPOSTA_BILDIRIM', 'EVET', 'EVET ise görev atanınca kişiye e-posta gider.'],
     ['ALAN_ADI', 'usak.edu.tr', 'Panele yalnızca bu alan adındaki hesaplar girebilir.']
   ];
@@ -619,6 +620,8 @@ function gorevleriAl_(liste, kullanici) {
 
   liste.slice().reverse().forEach(function (it) {
     try { if (it.evrak && it.evrakNo) evrakTablosunaYaz_(it); } catch (e) { kayitNotu_(it.evrakNo, 'Tabloya yazılamadı: ' + e.message); }
+    var ilgiNo = [];
+    try { ilgiNo = ilgiBagla_(it, it.evrak && it.evrak.tur === 'Giden' ? 'Giden' : 'Gelen'); } catch (e) { kayitNotu_(it.evrakNo, 'İlgi bağlanamadı: ' + e.message); }
     if (it.sadeceKayit) {                                   // kendi yazdığımız, imzalanmış yazı: görev açılmaz
       if (it.evrakNo && !kayitBul_(it.evrakNo).dosya) dosyaIstenen.push(it.evrakNo);
       return;
@@ -634,6 +637,7 @@ function gorevleriAl_(liste, kullanici) {
         var id = gorevYaz_({
           'Kaynak': 'EBYS', 'Evrak No': it.evrakNo || '', 'Konu': konu, 'Gönderen': it.gonderen || '',
           'Evrak Tarihi': it.evrak ? trTarih_(it.evrak.evrakTarihi || it.evrak.kayitTarihi) : '',
+          'İlgi': ilgiNo.length ? ilgiYazisi_(ilgiNo) : '',
           'Not Yazan': n.yazan || '', 'Not Tarihi': n.tarih || '', 'Hocanın Notu': n.metin || '',
           'Görev': konuluGorev_(konu, p.metin), 'Sorumlu': p.kisi, 'Ekleyen': kullanici || 'EBYS betiği',
           'EBYS Linki': it.link || '', 'Anahtar': i === 0 ? anahtar : anahtar + '#' + i
@@ -816,14 +820,22 @@ function gorevEkle(o) {
 
 function kayitSayfasi_() {
   var ss = SpreadsheetApp.getActive();
-  return ss.getSheetByName(SAYFA.KAYIT) || sayfaHazirla_(ss, SAYFA.KAYIT, KAYIT_SUTUN);
+  var sh = ss.getSheetByName(SAYFA.KAYIT);
+  if (!sh) return sayfaHazirla_(ss, SAYFA.KAYIT, KAYIT_SUTUN);
+  onbellek_('kayitBaslik', function () {
+    if (sh.getRange(1, KAYIT_SUTUN.length).getValue() !== KAYIT_SUTUN[KAYIT_SUTUN.length - 1]) {
+      sh.getRange(1, 1, 1, KAYIT_SUTUN.length).setValues([KAYIT_SUTUN]).setFontWeight('bold').setBackground('#e8eef7');
+    }
+    return true;
+  });
+  return sh;
 }
 
 function kayitBul_(no) {
   var v = onbellek_('kayit', function () { return kayitSayfasi_().getDataRange().getValues(); });
   for (var i = 1; i < v.length; i++) {
     if (String(v[i][0]).trim() === String(no).trim()) {
-      return { satir: i + 1, tur: v[i][1], tablo: v[i][3], tabloSatiri: v[i][4], dosya: v[i][5] };
+      return { satir: i + 1, tur: v[i][1], konu: v[i][2], tablo: v[i][3], tabloSatiri: v[i][4], dosya: v[i][5], ilgi: v[i][8] };
     }
   }
   return {};
@@ -846,12 +858,64 @@ function kayitYaz_(no, alanlar) {
     var c = KAYIT_SUTUN.indexOf(b) + 1;
     if (c < 1) return;
     var hucre = sh.getRange(k.satir, c);
-    if (b === 'Not') hucre.setValue([hucre.getValue(), alanlar[b]].filter(String).join(' | '));
+    if (b === 'Not' || b === 'Cevap') {
+      var eski = String(hucre.getValue());
+      if (eski.indexOf(alanlar[b]) < 0) hucre.setValue([eski, alanlar[b]].filter(String).join(' | '));
+    }
     else if (hucre.getValue() === '') hucre.setValue(alanlar[b]);
   });
 }
 
 function kayitNotu_(no, metin) { if (no) kayitYaz_(no, { 'Not': metin }); }
+
+// ---------------------------------------------------------------- ilgi (yazılar arası ilişki)
+
+/** "28.10.2026 tarihli ve 381948 sayılı yazınız." / "E-88071677-100-382595 sayılı" → ['381948', '382595'] */
+function ilgiNolari_(metin, haric) {
+  var out = [], re = /(\d{5,7})\s*say[ıi]l[ıi]/gi, m;
+  while ((m = re.exec(String(metin || ''))) !== null) {
+    if (m[1] !== String(haric || '') && out.indexOf(m[1]) < 0) out.push(m[1]);
+  }
+  return out;
+}
+
+/** ['381948'] → "381948 – Ortak Faaliyet ve PUKÖ Adımları" (konu, sistemde kayıtlıysa) */
+function ilgiYazisi_(nolar) {
+  return nolar.map(function (n) {
+    var k = kayitBul_(n);
+    return n + (k.konu ? ' – ' + k.konu : '');
+  }).join('; ');
+}
+
+/**
+ * Yeni gelen/giden yazının ilgilerini işler:
+ *  - Aktarım Kaydı'na ilgi yazılır
+ *  - Giden yazı bir gelen yazıya cevapsa: o gelen yazının açık görevlerine "Cevap yazıldı" notu
+ *    (CEVAP_YAZILINCA_TAMAMLA = EVET ise görev Tamamlandı yapılır)
+ */
+function ilgiBagla_(it, tur) {
+  var nolar = ilgiNolari_(it.evrak && it.evrak.ilgi, it.evrakNo);
+  if (!nolar.length || !it.evrakNo) return nolar;
+  kayitYaz_(it.evrakNo, { 'İlgi': ilgiYazisi_(nolar) });
+  if (tur !== 'Giden') return nolar;
+  var not = 'Cevap yazıldı: ' + it.evrakNo + (it.evrak.kayitTarihi ? ' (' + it.evrak.kayitTarihi + ')' : '');
+  var tamamla = ayar_('CEVAP_YAZILINCA_TAMAMLA') === 'EVET';
+  var ss = SpreadsheetApp.getActive();
+  nolar.forEach(function (n) { kayitYaz_(n, { 'Cevap': it.evrakNo }); });
+  gorevler_().filter(function (g) {
+    return nolar.indexOf(String(g['Evrak No'])) >= 0 && g._sayfa === SAYFA.GOREV;
+  }).sort(function (a, b) { return b._satir - a._satir; }).forEach(function (g) {
+    var sh = ss.getSheetByName(SAYFA.GOREV);
+    var h = sh.getRange(g._satir, sutun_('Açıklama'));
+    var eski = String(h.getValue());
+    if (eski.indexOf(not) < 0) h.setValue([eski, not].filter(String).join(' | '));
+    if (tamamla) {
+      sh.getRange(g._satir, sutun_('Durum')).setValue('Tamamlandı');
+      durumaGoreTasi_(SAYFA.GOREV, g._satir, 'Tamamlandı', personelAdi_(it.hazirlayan || '') || 'Cevap yazısı');
+    }
+  });
+  return nolar;
+}
 
 // ---------------------------------------------------------------- gelen-giden evrak tablosu
 
@@ -1103,7 +1167,9 @@ function evrakTablosunaYaz_(it) {
     tur: tur, kayitNo: no, sayi: ev.sayi || '', evrakTarihi: trTarih_(ev.evrakTarihi || (S.kayitTarihi ? '' : ev.kayitTarihi)),
     kayitTarihi: trTarih_(ev.kayitTarihi || ev.evrakTarihi), konu: ev.konu || it.konu, yer: yerAdi_(ev.yer),
     dosyaKodu: ev.dosyaKodu || '', sorumlu: sorumlular.join(', '),
-    aciklama: (it.notlar || []).map(function (n) { return n.metin; }).filter(String).join(' / ')
+    aciklama: [(it.notlar || []).map(function (n) { return n.metin; }).filter(String).join(' / '),
+               (function () { var n = ilgiNolari_(ev.ilgi, no); return n.length ? 'İlgi: ' + ilgiYazisi_(n) : ''; })()]
+              .filter(String).join(' | ')
   };
   if (S.sira && hucreBos_(sh, r, S.sira) && r > e.basSatir + 1) {
     var onceki = Number(String(sh.getRange(r - 1, S.sira).getDisplayValue()).replace(/\D/g, ''));

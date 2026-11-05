@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EBYS Görev Takip (Kalite Koordinatörlüğü)
 // @namespace    usak-kalite-koordinatorlugu
-// @version      0.3.0
+// @version      0.4.0
 // @description  EBYS görev listesindeki yazıları ve hocanın notlarını Google Sheets takip sistemine aktarır, PDF'i Drive'a gönderir.
 // @match        https://ebys.usak.edu.tr/enVision/*
 // @grant        GM_xmlhttpRequest
@@ -28,6 +28,11 @@
 
   GM_registerMenuCommand('Ayarlar: web uygulaması adresi ve anahtar', ayarla);
   GM_registerMenuCommand('Tüm sayfaları tara (bütün görev listesi)', function () { tara(true, true); });
+  GM_registerMenuCommand('Birim adı (Evrak Arama için)', function () {
+    var b = prompt('Giden yazıları alınacak birimin adı (Evrak Arama sonuçlarındaki "Evrakın Birimi"):', GM_getValue('birim', 'Kalite Koordinatörlüğü'));
+    if (b !== null) GM_setValue('birim', b.trim());
+  });
+  GM_registerMenuCommand('Giden yazı aramasını şimdi yap', function () { GM_setValue('sonArama', 0); arkaPlanArama(); });
   GM_registerMenuCommand('Listede görünenleri gönderilmiş say (eski işleri atla)', eskileriAtla);
   GM_registerMenuCommand('Gönderilmiş listesini sıfırla', function () {
     if (confirm('Gönderilmiş kayıtlar unutulsun mu? Sonraki taramada listedekiler yeniden gönderilir (aynı not iki kez eklenmez).')) {
@@ -171,7 +176,10 @@
       evrakTarihi: bul(/^(evrak|yazı|belge) tarihi/i),
       sayi: bul(/sayı/i),
       yer: tur === 'Giden' ? (yerOku('ctl00_cp_ucDocumentTo_') || yerOku('ctl00_cp_ucDocumentFrom_')) : yerOku('ctl00_cp_ucDocumentFrom_'),
-      dosyaKodu: kod ? (kod.value || kod.textContent || '').trim() : ''
+      dosyaKodu: kod ? (kod.value || kod.textContent || '').trim() : '',
+      ilgi: Array.prototype.map.call(doc.querySelectorAll('[id$="divResponseToDocsMode_Rhea"] .list-item-content'), function (el) {
+        return el.textContent.replace(/\s+/g, ' ').trim();
+      }).filter(String).join(' | ')
     };
   }
 
@@ -216,6 +224,24 @@
       return fetch(adaylar[i], { credentials: 'include' }).then(function (r) {
         if (r.ok && pdfMi(r)) return r.blob();
         return dene(i + 1);
+      }, function () { return dene(i + 1); });
+    };
+    return dene(0).then(function (blob) {
+      if (!blob || !blob.size) throw new Error('PDF alınamadı');
+      return { blob: blob, dosyaAdi: dosyaAdi };
+    });
+  }
+
+  /** Evrak sayfası açılmadan, ön izlemenin kullandığı kimliklerle PDF dener */
+  function pdfIndirAdres(docId, oturum, ad) {
+    var dosyaAdi = (ad || 'evrak').replace(/[\\/:*?"<>|]/g, ' ').slice(0, 120) + '.pdf';
+    var q = '?Type=6&HANN=1&ID=' + docId + '&SessID=' + oturum;
+    var adaylar = ['/enVision/DocumentModule/GetFile.ashx/' + encodeURIComponent(dosyaAdi) + q,
+                   '/enVision/GetFile.ashx/' + encodeURIComponent(dosyaAdi) + q];
+    var dene = function (i) {
+      if (i >= adaylar.length) return Promise.reject(new Error('PDF alınamadı'));
+      return fetch(new URL(adaylar[i], location.href).href, { credentials: 'include' }).then(function (r) {
+        return r.ok && pdfMi(r) ? r.blob() : dene(i + 1);
       }, function () { return dene(i + 1); });
     };
     return dene(0).then(function (blob) {
@@ -397,6 +423,142 @@
     kutuGuncelle();
   }
 
+  // ------------------------------------------------------------ Evrak Arama: birimin bütün giden yazıları
+  // Evrak Arama sonuçlarındaki imzalı giden yazılar (kim yazmış olursa olsun) giden tablosuna ve Drive'a gider.
+  // Böylece diğer kişilerin bir şey kurmasına gerek kalmaz. Ana sayfa açıkken arama saatte bir arka planda yapılır.
+
+  function aramaSayfasiMi(doc) { return !!doc.querySelector('[id$="ucRheaFilter_btnSearch"]') && !!doc.querySelector('[id^="ctl00_cp_grdMain"]'); }
+
+  function aramaSonuclari(doc) {
+    var basliklar = Array.prototype.map.call(doc.querySelectorAll('tr.GridHeaderStyle th'), function (th) {
+      return th.textContent.replace(/\s+/g, ' ').trim();
+    });
+    var bul = function (re) { for (var i = 0; i < basliklar.length; i++) if (re.test(basliklar[i])) return i; return -1; };
+    var S = {
+      tanim: bul(/^Evrak Tanımı$/i), birim: bul(/^Evrakın Birimi$/i), konu: bul(/^Konu$/i), no: bul(/numerat|numarat/i),
+      kayitTarihi: bul(/Kayıt Tarihi/i), tarih: bul(/^Tarih$/i), olusturan: bul(/^Oluşturan$/i),
+      gitYer: bul(/Git\. Yer/i), gelYer: bul(/Gel\. Yer/i), ilgi: bul(/^İlgi/i)
+    };
+    var out = [];
+    doc.querySelectorAll('tr.GridItemStyle, tr.GridAlternateItemStyle').forEach(function (tr) {
+      if (!/grdMain/.test(tr.id)) return;
+      var td = tr.children;
+      var al = function (k) { return S[k] >= 0 && td[S[k]] ? td[S[k]].textContent.replace(/\s+/g, ' ').trim() : ''; };
+      var on = tr.querySelector('[onclick*="Show_Preview"]');
+      var arg = on ? (on.getAttribute('onclick').match(/Show_Preview\(\s*\d+\s*,\s*'([^']+)'\s*,\s*'[^']*'\s*,\s*'([^']+)'/) || []) : [];
+      out.push({
+        tanim: al('tanim'), birim: al('birim'), konu: al('konu'), no: al('no').replace(/\D/g, ''),
+        kayitTarihi: al('kayitTarihi'), tarih: al('tarih'), olusturan: al('olusturan'),
+        gitYer: al('gitYer'), gelYer: al('gelYer'), ilgi: al('ilgi'),
+        imzali: !!tr.querySelector('[title*="elektronik olarak imzalanmıştır"]'),
+        docId: arg[1] || '', oturum: arg[2] || ''
+      });
+    });
+    return out;
+  }
+
+  /** Birimin imzalı giden yazıları (aynı numaralı dağıtım kopyaları bir kez) */
+  function gidenleriSec(satirlar) {
+    var birim = sade(GM_getValue('birim', 'Kalite Koordinatörlüğü'));
+    var gor = {};
+    return satirlar.filter(function (r) {
+      if (!r.no || !/giden/i.test(r.tanim) || !r.imzali) return false;
+      if (birim && sade(r.birim).indexOf(birim) < 0) return false;
+      if (gor[r.no]) return false;
+      gor[r.no] = 1; return true;
+    });
+  }
+  function sade(t) { return String(t || '').toLocaleLowerCase('tr').replace(/\s+/g, ' ').trim(); }
+
+  async function gidenleriGonder(doc, kaynakUrl) {
+    var islenen = GM_getValue('aramaIslenen', {});
+    var yeniler = gidenleriSec(aramaSonuclari(doc)).filter(function (r) { return !islenen[r.no]; });
+    if (!yeniler.length) return { eklenen: 0, pdf: 0, yeni: 0 };
+    var sonuc = { eklenen: 0, pdf: 0, pdfHata: 0, yeni: yeniler.length };
+    for (var i = 0; i < yeniler.length; i += GRUP) {
+      var grup = yeniler.slice(i, i + GRUP);
+      durum('Giden yazılar gönderiliyor ' + Math.min(i + GRUP, yeniler.length) + '/' + yeniler.length);
+      var c = await sunucu({
+        islem: 'gorevler', kullanici: kullanici(),
+        gorevler: grup.map(function (r) {
+          return {
+            evrakNo: r.no, konu: r.konu, gonderen: r.olusturan, gorevAdi: 'Giden yazı (Evrak Arama)', link: kaynakUrl,
+            notlar: [], sadeceKayit: true, hazirlayan: r.olusturan,
+            evrak: { tur: 'Giden', konu: r.konu, kayitTarihi: r.kayitTarihi, evrakTarihi: r.kayitTarihi, yer: r.gitYer, ilgi: r.ilgi }
+          };
+        })
+      });
+      grup.forEach(function (r) { islenen[r.no] = Date.now(); });
+      GM_setValue('aramaIslenen', islenen);
+      for (var j = 0; j < (c.dosyaIstenen || []).length; j++) {
+        var no = c.dosyaIstenen[j];
+        var r = grup.filter(function (x) { return x.no === no; })[0];
+        if (!r || !r.docId) continue;
+        try {
+          var p = await pdfIndirAdres(r.docId, r.oturum, r.konu);
+          await sunucu({ islem: 'dosya', evrakNo: no, tur: 'Giden', dosyaAdi: p.dosyaAdi, mime: 'application/pdf', base64: await blobBase64(p.blob) });
+          sonuc.pdf++;
+        } catch (e) { sonuc.pdfHata++; console.warn('[EBYS Takip] giden PDF', no, e); }
+      }
+    }
+    return sonuc;
+  }
+
+  function gidenOzeti(r) {
+    return r.yeni ? r.yeni + ' giden yazı kaydedildi' + (r.pdf || r.pdfHata ? ', ' + r.pdf + ' PDF' + (r.pdfHata ? ' (' + r.pdfHata + ' PDF alınamadı)' : '') : '')
+                  : 'Yeni giden yazı yok';
+  }
+
+  /** Evrak Arama sayfasındayken: adres hatırlanır, düğme çıkar, otomatikse gönderilir */
+  function aramaSayfasindaysa() {
+    if (!aramaSayfasiMi(document)) return;
+    GM_setValue('aramaUrl', location.origin + location.pathname + location.search);
+    var say = gidenleriSec(aramaSonuclari(document)).filter(function (r) { return !GM_getValue('aramaIslenen', {})[r.no]; }).length;
+    var b = dugme(say ? say + ' giden yazıyı tabloya kaydet' : 'Bu sonuçlarda yeni giden yazı yok', async function () {
+      if (calisiyor) return; calisiyor = true;
+      try { durum(gidenOzeti(await gidenleriGonder(document, location.href)), true); }
+      catch (e) { durum('Hata: ' + e.message, true); }
+      calisiyor = false;
+    });
+    kutu().appendChild(b);
+    durum('Evrak Arama: birimin imzalı giden yazıları okunur. Arama ölçütleri kaydedilirse ana sayfa bunu saatte bir kendisi yapar.');
+  }
+
+  /** Ana sayfadayken saatte bir: kayıtlı arama sayfası gizli çerçevede açılır, "Ara"ya basılır, sonuçlar işlenir */
+  function arkaPlanArama() {
+    var url = GM_getValue('aramaUrl', '');
+    var son = GM_getValue('sonArama', 0);
+    if (!url || !A.url || !A.anahtar || !A.otomatik || Date.now() - son < 60 * 60000) return;
+    if (calisiyor) { setTimeout(arkaPlanArama, 60000); return; }
+    GM_setValue('sonArama', Date.now());
+    var fr = document.createElement('iframe');
+    fr.style.cssText = 'position:absolute;width:1px;height:1px;left:-9999px;visibility:hidden';
+    var yukleme = 0, bitti = false;
+    var temizle = function () { bitti = true; setTimeout(function () { fr.remove(); }, 500); };
+    setTimeout(function () { if (!bitti) { temizle(); console.warn('[EBYS Takip] arka plan araması zaman aşımı'); } }, 120000);
+    fr.onload = async function () {
+      if (bitti) return;
+      yukleme++;
+      var d = fr.contentDocument;
+      if (!d || !aramaSayfasiMi(d)) { temizle(); return; }
+      var w = fr.contentWindow;
+      if (yukleme === 1 && typeof w.__doPostBack === 'function') {
+        w.__doPostBack('ctl00$cp$ucRheaFilter$btnSearch', '');
+        return;                                   // arama sonrası çerçeve yeniden yüklenecek
+      }
+      if (calisiyor) { temizle(); return; }
+      calisiyor = true;
+      try {
+        var r = await gidenleriGonder(d, url);
+        if (r.yeni) durum(gidenOzeti(r), true);
+      } catch (e) { durum('Giden yazı araması: ' + e.message, true); }
+      calisiyor = false;
+      temizle();
+    };
+    fr.src = url;
+    document.body.appendChild(fr);
+  }
+
   // ------------------------------------------------------------ evrak sayfasında tek tık
   function evrakSayfasiDugmesi() {
     if (!document.getElementById('ctl00_cp_divNotes') && !document.getElementById('ctl00_cp_ucDocumentViewer_hdnSrc')) return;
@@ -486,6 +648,8 @@
       }
     }
     evrakSayfasiDugmesi();
+    aramaSayfasindaysa();
+    if (/Portal_Rhea\.aspx/i.test(location.pathname)) setTimeout(arkaPlanArama, 20000);
   }
   if (window.top === window.self) basla();
 })();

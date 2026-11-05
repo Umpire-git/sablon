@@ -173,6 +173,35 @@ biri bu adrese veri gönderemez ve panel bu adresten açılmaz.
   tek bir evrakı elle de gönderebilirsiniz.
 - Ana sayfa açık bırakılırsa ayarladığınız aralıkla yenilenir ve yeni gelenleri kendisi alır.
 
+## Birimin bütün giden yazıları (Evrak Arama ile, diğer kişiler kurulum yapmadan)
+
+Betik, EBYS'deki **Evrak Arama** sonuçlarından birimin **imzalı giden yazılarını** (kim yazmış olursa olsun)
+okur: giden sekmesine yazar (Sorumlu Kişi = Oluşturan), PDF'i Giden Yazı klasörüne koyar. Betiğin tek
+bir bilgisayarda kurulu olması yeterlidir.
+
+Bir kez yapılacaklar (betiğin kurulu olduğu bilgisayarda):
+1. EBYS'de sağ üstte adınıza tıklayıp kişisel ayarlarda **"Arama Kriterleri Sakla"**yı **Açık** yapın.
+2. **Evrak Arama**'yı açın ve şunları seçin:
+   - **Evrakın Birimi:** Kalite Koordinatörlüğü
+   - **Evrak Türü:** Kurum İçi Giden Evrak, Kurum Dışı Giden Evrak (kullandığınız diğer giden türleri de)
+   - **Evrak Durumu:** Onaylandı
+   - **Tarih:** 7 Gün
+3. **Ara**'ya basın. Sol alttaki kutuda **"N giden yazıyı tabloya kaydet"** düğmesi çıkar; bir kez basın.
+   Betik bu arama sayfasının adresini hatırlar.
+
+Bundan sonra EBYS ana sayfası açıkken betik bu aramayı **saatte bir** arka planda kendisi yapar. Hemen
+yaptırmak için Tampermonkey menüsünden **"Giden yazı aramasını şimdi yap"**ı seçin. Birim adınız farklı
+yazılıyorsa menüden **"Birim adı (Evrak Arama için)"** ile düzeltin.
+
+## İlgi (yazılar arası ilişki)
+
+- Bir yazı başka bir yazıya ilgi tutuyorsa ("28.10.2026 tarihli ve 381948 sayılı yazınız") Görevler'de
+  **İlgi** sütununda "381948 – konu" görünür; evrak tablosundaki satırın Açıklama'sına da "İlgi: …" yazılır.
+- Bir gelen yazıya cevap olarak giden yazı imzalanınca, o gelen yazının görevinin Açıklama'sına
+  **"Cevap yazıldı: 383600 (tarih)"** notu düşülür. Ayarlar'da `CEVAP_YAZILINCA_TAMAMLA` = `EVET` yaparsanız
+  o görev ayrıca otomatik **Tamamlandı** olur.
+- Aktarım Kaydı sekmesinde her evrakın İlgi ve Cevap bilgisi tutulur.
+
 ## Bilinmesi gerekenler
 
 - **Okundu işareti:** Betik evrak sayfasını arka planda açtığı için EBYS o görevi "okundu" sayabilir.
