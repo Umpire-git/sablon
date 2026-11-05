@@ -247,7 +247,7 @@ kullanın.
 | Takip tablosu, panel, kod | **kalite@usak.edu.tr** (ortak hesap) | Hiçbir şey. Kişiye bağlı değil. |
 | Drive klasörleri (İş ve İşlemler) | Klasörün sahibi | Klasörleri **kalite@** hesabında açın ya da bir **ortak Drive**'a taşıyın. Kişisel hesapta kalırsa o kişi ayrılınca erişim sorunu çıkar. |
 | Gelen-giden evrak tablosu | Tablonun sahibi | kalite@ hesabının düzenleme yetkisi olmalı. |
-| EBYS'yi okuyan betik | Kurulu olduğu bilgisayar ve oradaki EBYS oturumu | Betiği **en az iki bilgisayara** kurun. Aynı yazı iki bilgisayardan gelse de bir kez işlenir. |
+| EBYS'yi okuyan betik | Kurulu olduğu bilgisayar ve oradaki EBYS oturumu | 7/24 açık bir bilgisayara kurun: **linux-mint/LINUX-MINT.md**. Yedek olarak bir bilgisayara daha kurun; aynı yazı iki yerden gelse de bir kez işlenir. |
 
 - **Hangi bilgisayarlara kurulmalı:** Hocanın görev sevk ettiği kişilerin bilgisayarlarına. Gelen görevler
   yalnızca sevk edilen kişinin EBYS ana sayfasına düşer. Giden yazılar ise Evrak Arama'dan alındığı için tek

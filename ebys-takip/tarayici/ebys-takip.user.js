@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         EBYS Görev Takip (Kalite Koordinatörlüğü)
 // @namespace    usak-kalite-koordinatorlugu
-// @version      0.5.0
+// @version      0.6.0
 // @description  EBYS görev listesindeki yazıları ve hocanın notlarını Google Sheets takip sistemine aktarır, PDF'i Drive'a gönderir.
-// @match        https://ebys.usak.edu.tr/enVision/*
+// @match        https://ebys.usak.edu.tr/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -31,6 +31,20 @@
   GM_registerMenuCommand('Birim adı (Evrak Arama için)', function () {
     var b = prompt('Giden yazıları alınacak birimin adı (Evrak Arama sonuçlarındaki "Evrakın Birimi"):', GM_getValue('birim', 'Kalite Koordinatörlüğü'));
     if (b !== null) GM_setValue('birim', b.trim());
+  });
+  GM_registerMenuCommand('Otomatik giriş (7/24 açık bilgisayar için)', function () {
+    if (!confirm('EBYS oturumu kapanınca betik sizin yerinize giriş yapsın mı?\n\n' +
+                 'Kullanıcı adı ve şifre YALNIZCA bu bilgisayardaki tarayıcıda saklanır. ' +
+                 'Bunu sadece kilitli, kurumun 7/24 çalışan bilgisayarında kullanın.\n\n' +
+                 'İptal = otomatik girişi kapat ve kayıtlı şifreyi sil.')) {
+      GM_setValue('girisKullanici', ''); GM_setValue('girisSifre', ''); alert('Otomatik giriş kapatıldı.'); return;
+    }
+    var k = prompt('EBYS kullanıcı adı:', GM_getValue('girisKullanici', ''));
+    if (!k) return;
+    var p = prompt('EBYS şifresi (yalnızca bu tarayıcıda saklanır):', '');
+    if (!p) return;
+    GM_setValue('girisKullanici', k.trim()); GM_setValue('girisSifre', p); GM_setValue('girisDenemeleri', []);
+    alert('Kaydedildi. Oturum kapandığında betik otomatik giriş yapacak.');
   });
   GM_registerMenuCommand('Giden yazı aramasını şimdi yap', function () { GM_setValue('sonArama', 0); arkaPlanArama(); });
   GM_registerMenuCommand('Listede görünenleri gönderilmiş say (eski işleri atla)', eskileriAtla);
@@ -188,6 +202,7 @@
       if (!r.ok) throw new Error('EBYS sayfası açılamadı (' + r.status + ')');
       return r.text().then(function (h) {
         var doc = new DOMParser().parseFromString(h, 'text/html');
+        if (doc.querySelector('input[type="password"]')) throw new Error('EBYS oturumu kapanmış');
         return { doc: doc, html: h, url: r.url };
       });
     });
@@ -339,7 +354,13 @@
           if (o.sadeceKayit) o.evrak.tur = 'Giden';
           sayfalar[o.evrakNo] = s;
           paket.push(o);
-        } catch (e) { console.warn('[EBYS Takip]', o.konu, e); st.okunamayan = (st.okunamayan || 0) + 1; }
+        } catch (e) {
+          console.warn('[EBYS Takip]', o.konu, e); st.okunamayan = (st.okunamayan || 0) + 1;
+          if (/oturumu kapanmış/.test(e.message)) {          // yeniden girişe yönlendir, sonra kaldığı yerden devam
+            durumKaydet(st); setTimeout(function () { location.href = location.origin + location.pathname; }, 1000);
+            throw e;
+          }
+        }
         await bekle(500);
       }
       if (!paket.length) continue;
@@ -635,8 +656,49 @@
     else if (!calisiyor) durum(GM_getValue('sonDurum', '') || (A.otomatik ? 'Otomatik gönderim açık' : 'Elle gönderim'));
   }
 
+  // ------------------------------------------------------------ otomatik giriş (7/24 bilgisayar)
+  function degerYaz(el, v) {
+    var setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
+    if (setter && setter.set) setter.set.call(el, v); else el.value = v;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  /** Giriş sayfasıysa true döner (sayfada başka iş yapılmaz) */
+  function otomatikGiris() {
+    var sifre = Array.prototype.filter.call(document.querySelectorAll('input[type="password"]'), function (i) { return i.offsetParent !== null; })[0];
+    if (!sifre) return false;
+    var k = GM_getValue('girisKullanici', ''), p = GM_getValue('girisSifre', '');
+    if (!k || !p) { durum('EBYS oturumu kapalı. 7/24 bilgisayarda otomatik giriş için Tampermonkey menüsü → "Otomatik giriş".'); return true; }
+    var denemeler = GM_getValue('girisDenemeleri', []).filter(function (t) { return Date.now() - t < 3600000; });
+    if (denemeler.length >= 3) {               // şifre yanlışsa hesabı kilitletmemek için
+      durum('Otomatik giriş son 1 saatte 3 kez denendi ve olmadı. Şifre değişmiş olabilir; elle girin ve menüden güncelleyin.', true);
+      return true;
+    }
+    denemeler.push(Date.now()); GM_setValue('girisDenemeleri', denemeler);
+    var kapsam = sifre.form || document;
+    var kul = Array.prototype.filter.call(kapsam.querySelectorAll('input'), function (i) {
+      return (i.type === 'text' || i.type === 'email' || i.type === '') && i.offsetParent !== null && i !== sifre;
+    })[0];
+    if (!kul) { durum('Giriş sayfasında kullanıcı adı alanı bulunamadı.'); return true; }
+    durum('EBYS oturumu kapanmış, otomatik giriş yapılıyor…');
+    setTimeout(function () {
+      degerYaz(kul, k); degerYaz(sifre, p);
+      setTimeout(function () {
+        var btn = kapsam.querySelector('button[type="submit"], input[type="submit"], input[type="image"], [id*="Login" i], [id*="Giris" i], [id*="btnOK" i]') ||
+                  Array.prototype.filter.call(kapsam.querySelectorAll('button, a, div.btn, input[type="button"]'), function (b) {
+                    return /giriş|oturum aç|login/i.test(b.textContent || b.value || '');
+                  })[0];
+        if (btn) btn.click(); else if (sifre.form) sifre.form.submit();
+      }, 700);
+    }, 1500);
+    return true;
+  }
+
   // ------------------------------------------------------------ başlat
   function basla() {
+    if (otomatikGiris()) return;
+    if (listeyiOku().length) GM_setValue('girisDenemeleri', []);   // girildi: deneme sayacı sıfırlanır
     // Görev listesi değişince (sayfa değişimi, sonradan yükleme) yeniden bak.
     // Sayfadaki saat gibi sürekli değişen öğeler yüzünden yalnızca liste gerçekten değişince çalışır.
     var sonImza = listeImza(), bekliyor = false;
